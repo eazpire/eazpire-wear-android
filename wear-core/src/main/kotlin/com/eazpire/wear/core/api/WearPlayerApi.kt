@@ -117,6 +117,31 @@ class WearPlayerApi(
     suspend fun artifactsInventory(ownerId: String): JSONObject =
         dispatch("artifacts-inventory-list", query = mapOf("owner_id" to ownerId))
 
+    suspend fun artifactsLoadoutGet(ownerId: String): JSONObject =
+        dispatch("artifacts-loadout-get", query = mapOf("owner_id" to ownerId))
+
+    suspend fun artifactsClaimQr(token: String, ownerId: String): JSONObject =
+        dispatch(
+            "artifacts-claim-qr",
+            method = "POST",
+            body = JSONObject()
+                .put("owner_id", ownerId)
+                .put("qr_token", token)
+                .put("token", token),
+        )
+
+    fun countMintedArtifacts(inventoryJson: JSONObject): Int {
+        val slots = inventoryJson.optJSONArray("slots") ?: return 0
+        var count = 0
+        for (i in 0 until slots.length()) {
+            val slot = slots.optJSONObject(i) ?: continue
+            val status = slot.optString("generation_status", slot.optString("status", ""))
+            if (status.equals("failed", ignoreCase = true)) continue
+            count += 1
+        }
+        return count
+    }
+
     suspend fun artifactsShowcaseRecent(limit: Int = 24): JSONObject =
         dispatch("artifacts-showcase-recent", query = mapOf("limit" to limit.toString()))
 
