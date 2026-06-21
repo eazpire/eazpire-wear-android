@@ -22,4 +22,11 @@
     <string name="no_network">No squad members yet</string>
     <string name="welcome_title">Eazpire Wear Player</string>
     <string name="welcome_subtitle">Hub, feed, verify, squad, vault &amp; move-to-earn</string>
+    <string name="cancel">Cancel</string>
+    <string name="play_review_title">Review access</string>
+    <string name="play_review_hint">Long-press Sign in to open this screen (Google Play review).</string>
+    <string name="play_review_default_email">google-play-review@eazpire.com</string>
+    <string name="play_review_email_label">Review email</string>
+    <string name="play_review_code_label">Review code</string>
+    <string name="play_review_submit">Continue</string>
 </resources>

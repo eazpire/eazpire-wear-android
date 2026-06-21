@@ -1,16 +1,21 @@
 package com.eazpire.wear.ui
 
 import android.net.Uri
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -29,6 +35,7 @@ import com.eazpire.wear.auth.AuthErrorMessages
 import com.eazpire.wear.auth.AuthException
 import com.eazpire.wear.auth.OAuthPkceStore
 import com.eazpire.wear.auth.PkceUtils
+import com.eazpire.wear.auth.PlayReviewAuthService
 import com.eazpire.wear.auth.ShopifyAuthService
 import com.eazpire.wear.core.auth.SecureTokenStore
 import com.eazpire.wear.sync.WearPlayerAuthSync
@@ -43,11 +50,19 @@ fun AuthScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val authService = remember { ShopifyAuthService() }
+    val reviewAuthService = remember { PlayReviewAuthService() }
     var codeVerifier by remember { mutableStateOf<String?>(null) }
     var savedState by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var callbackHandled by remember { mutableStateOf(false) }
+    var showReviewDialog by remember { mutableStateOf(false) }
+    var reviewEmail by remember { mutableStateOf("") }
+    var reviewCode by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        reviewEmail = context.getString(R.string.play_review_default_email)
+    }
 
     fun handleCallback(url: String) {
         if (callbackHandled) return
@@ -114,6 +129,69 @@ fun AuthScreen(
         }
     }
 
+    fun submitReviewLogin() {
+        scope.launch {
+            isLoading = true
+            error = null
+            try {
+                val result = reviewAuthService.exchangeReviewCredentials(reviewEmail, reviewCode)
+                tokenStore.saveJwt(result.jwt, result.ownerId)
+                WearPlayerAuthSync.push(context, tokenStore)
+                showReviewDialog = false
+                reviewCode = ""
+                onAuthSuccess()
+            } catch (e: Exception) {
+                error = AuthErrorMessages.fromThrowable(e)
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    if (showReviewDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isLoading) showReviewDialog = false },
+            title = { Text(stringResource(R.string.play_review_title)) },
+            text = {
+                Column {
+                    Text(
+                        stringResource(R.string.play_review_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = reviewEmail,
+                        onValueChange = { reviewEmail = it },
+                        label = { Text(stringResource(R.string.play_review_email_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = reviewCode,
+                        onValueChange = { reviewCode = it },
+                        label = { Text(stringResource(R.string.play_review_code_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { submitReviewLogin() }, enabled = !isLoading && reviewCode.isNotBlank()) {
+                    Text(stringResource(R.string.play_review_submit))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReviewDialog = false }, enabled = !isLoading) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -129,7 +207,12 @@ fun AuthScreen(
         if (isLoading) {
             CircularProgressIndicator()
         } else {
-            Button(onClick = { startLogin() }) {
+            Button(
+                onClick = { startLogin() },
+                modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(onLongPress = { showReviewDialog = true })
+                },
+            ) {
                 Text(stringResource(R.string.sign_in))
             }
         }
