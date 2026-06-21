@@ -1,6 +1,7 @@
 package com.eazpire.wear.ui
 
 import android.net.Uri
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -46,7 +48,6 @@ import com.eazpire.wear.auth.ShopifyAuthService
 import com.eazpire.wear.core.auth.SecureTokenStore
 import com.eazpire.wear.sync.WearPlayerAuthSync
 import com.eazpire.wear.theme.EazWearColors
-import com.eazpire.wear.theme.EazWearScreenBackground
 import kotlinx.coroutines.launch
 
 @Composable
@@ -200,19 +201,21 @@ fun AuthScreen(
         )
     }
 
-    EazWearScreenBackground {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Surface(
-            color = EazWearColors.Panel.copy(alpha = 0.92f),
+            color = EazWearColors.Panel,
             shape = RoundedCornerShape(20.dp),
-            tonalElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, EazWearColors.PanelBorder, RoundedCornerShape(20.dp)),
+            contentColor = EazWearColors.TextPrimary,
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp),
@@ -265,7 +268,6 @@ fun AuthScreen(
                     )
                 }
             }
-        }
         }
     }
 }

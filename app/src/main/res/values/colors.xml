@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="wear_bg">#0A0F18</color>
+    <color name="wear_bg">#0F172A</color>
     <color name="wear_panel">#111827</color>
     <color name="wear_orange">#F97316</color>
     <color name="wear_purple">#A78BFA</color>

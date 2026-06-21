@@ -4,64 +4,65 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.LocalContentColor
 
-/** Brand tokens aligned with eazpire.com / eaz-redesign (orange #f97316, dark navy bg). */
+/** Brand tokens aligned with eazpire.com (orange #f97316, navy bg). */
 object EazWearColors {
     val Orange = Color(0xFFF97316)
     val OrangeDark = Color(0xFFEA580C)
-    val OrangeLight = Color(0xFFFF9A2A)
     val Purple = Color(0xFFA78BFA)
-    val BgTop = Color(0xFF0F172A)
-    val BgBottom = Color(0xFF0A0F18)
-    val Panel = Color(0xFF111827)
-    val PanelElevated = Color(0xFF1E293B)
-    val TextPrimary = Color(0xFFF8FAFC)
+    /** Solid app background — no gradient (reliable on all devices). */
+    val Background = Color(0xFF0F172A)
+    val Panel = Color(0xFF334155)
+    val PanelBorder = Color(0xFF64748B)
+    val TextPrimary = Color(0xFFFFFFFF)
     val TextMuted = Color(0xFF94A3B8)
-    val TextSubtle = Color(0xFFCBD5E1)
+    val TextSubtle = Color(0xFFE2E8F0)
 }
 
 private val WearColorScheme = darkColorScheme(
     primary = EazWearColors.Orange,
     onPrimary = Color.White,
     secondary = EazWearColors.Purple,
-    background = EazWearColors.BgBottom,
+    background = EazWearColors.Background,
     surface = EazWearColors.Panel,
-    surfaceVariant = EazWearColors.PanelElevated,
+    surfaceVariant = Color(0xFF1E293B),
     onSecondary = Color.White,
     onBackground = EazWearColors.TextPrimary,
     onSurface = EazWearColors.TextPrimary,
     onSurfaceVariant = EazWearColors.TextMuted,
 )
 
-val EazWearBackgroundBrush: Brush
-    get() = Brush.linearGradient(
-        colors = listOf(
-            EazWearColors.BgTop,
-            EazWearColors.BgBottom,
-            Color(0xFF070B14),
-        ),
-    )
-
 @Composable
 fun EazWearTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = WearColorScheme,
-        content = content,
-    )
+    MaterialTheme(colorScheme = WearColorScheme) {
+        CompositionLocalProvider(LocalContentColor provides EazWearColors.TextPrimary) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = EazWearColors.Background,
+            ) {
+                content()
+            }
+        }
+    }
 }
 
-/** Site-style dark gradient behind Wear screens (readable light text). */
+/** Optional wrapper for tab screens — same solid bg. */
 @Composable
-fun EazWearScreenBackground(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun EazWearScreenBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(EazWearBackgroundBrush),
+            .background(EazWearColors.Background),
     ) {
         content()
     }

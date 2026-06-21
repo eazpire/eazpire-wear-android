@@ -5,8 +5,10 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Feed
@@ -15,8 +17,10 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,13 +31,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.eazpire.wear.core.api.WearPlayerApi
 import com.eazpire.wear.core.auth.SecureTokenStore
 import com.eazpire.wear.health.StepSyncHelper
 import com.eazpire.wear.sync.WearPlayerAuthSync
-import com.eazpire.wear.theme.EazWearScreenBackground
+import com.eazpire.wear.theme.EazWearColors
 import com.eazpire.wear.theme.EazWearTheme
 import com.eazpire.wear.ui.AuthScreen
 import com.eazpire.wear.ui.FeedScreen
@@ -48,7 +53,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         tokenStore = SecureTokenStore.get(this)
         setContent {
             val callbackUri = remember { intent?.data?.toString() }
@@ -97,19 +101,33 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
     val stepSync = remember { StepSyncHelper(context) }
     val tabs = WearTab.entries
 
-    EazWearScreenBackground {
-        Scaffold(
+    Scaffold(
+        modifier = Modifier.systemBarsPadding(),
+        containerColor = Color.Transparent,
         topBar = {
             TextButton(onClick = onSignOut, modifier = Modifier.padding(horizontal = 8.dp)) {
-                Text(stringResource(R.string.sign_out))
+                Text(
+                    stringResource(R.string.sign_out),
+                    color = EazWearColors.TextSubtle,
+                )
             }
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = EazWearColors.Panel.copy(alpha = 0.95f),
+                contentColor = EazWearColors.TextPrimary,
+            ) {
                 tabs.forEachIndexed { index, wearTab ->
                     NavigationBarItem(
                         selected = tab == index,
                         onClick = { tab = index },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = EazWearColors.Orange,
+                            selectedTextColor = EazWearColors.Orange,
+                            unselectedIconColor = EazWearColors.TextMuted,
+                            unselectedTextColor = EazWearColors.TextMuted,
+                            indicatorColor = EazWearColors.Orange.copy(alpha = 0.18f),
+                        ),
                         icon = {
                             Icon(
                                 when (wearTab) {
@@ -140,7 +158,11 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
             }
         },
     ) { padding ->
-        androidx.compose.foundation.layout.Box(modifier = Modifier.padding(padding)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
             when (tabs[tab]) {
                 WearTab.Hub -> HubScreen(api, ownerId, context)
                 WearTab.Feed -> FeedScreen(api)
@@ -150,6 +172,5 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
                 WearTab.Move -> MoveScreen(api, stepSync)
             }
         }
-    }
     }
 }
