@@ -80,10 +80,12 @@ dependencies {
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
     implementation("androidx.health.connect:connect-client:1.1.0-alpha11")
 
-    val cameraxVersion = "1.3.4"
+    val cameraxVersion = "1.4.2"
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
+    implementation("androidx.concurrent:concurrent-futures-ktx:1.2.0")
+    implementation("com.google.guava:guava:33.3.1-android")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 }
 

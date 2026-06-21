@@ -2,6 +2,7 @@ package com.eazpire.wear.ui
 
 import android.net.Uri
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -19,6 +19,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,13 +45,11 @@ import com.eazpire.wear.auth.AuthErrorMessages
 import com.eazpire.wear.auth.AuthException
 import com.eazpire.wear.auth.CreatorSessionHandoff
 import com.eazpire.wear.auth.OAuthPkceStore
-import com.eazpire.wear.auth.PendingQrClaimStore
 import com.eazpire.wear.auth.PkceUtils
 import com.eazpire.wear.auth.PlayReviewAuthService
 import com.eazpire.wear.auth.SessionProbeResult
 import com.eazpire.wear.auth.SessionResolver
 import com.eazpire.wear.auth.ShopifyAuthService
-import com.eazpire.wear.core.api.WearPlayerApi
 import com.eazpire.wear.core.auth.SecureTokenStore
 import com.eazpire.wear.sync.WearPlayerAuthSync
 import com.eazpire.wear.theme.EazWearColors
@@ -59,11 +58,13 @@ import kotlinx.coroutines.launch
 @Composable
 fun AuthScreen(
     tokenStore: SecureTokenStore,
+    sessionHandoff: CreatorSessionHandoff,
     sessionProbeResult: SessionProbeResult,
-    creatorHandoff: CreatorSessionHandoff,
+    showQrButton: Boolean,
     onAuthSuccess: () -> Unit,
-    onOpenQrFlow: () -> Unit,
+    onJoinWithQr: () -> Unit,
     oauthCallbackUri: String? = null,
+    autoJoinTrigger: Int = 0,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -77,26 +78,9 @@ fun AuthScreen(
     var showReviewDialog by remember { mutableStateOf(false) }
     var reviewEmail by remember { mutableStateOf("") }
     var reviewCode by remember { mutableStateOf("") }
-    val showQrButton = sessionProbeResult != SessionProbeResult.LoggedIn
 
     LaunchedEffect(Unit) {
         reviewEmail = context.getString(R.string.play_review_default_email)
-    }
-
-    suspend fun completePendingQrClaim() {
-        val token = PendingQrClaimStore.consume(context) ?: return
-        val ownerId = tokenStore.getOwnerId().orEmpty()
-        val jwt = tokenStore.getJwt()
-        if (ownerId.isBlank() || jwt.isNullOrBlank()) return
-        val api = WearPlayerApi(jwt = jwt)
-        api.artifactsClaimQr(token, ownerId)
-    }
-
-    fun finishAuth() {
-        scope.launch {
-            runCatching { completePendingQrClaim() }
-            onAuthSuccess()
-        }
     }
 
     fun handleCallback(url: String) {
@@ -128,7 +112,7 @@ fun AuthScreen(
                 codeVerifier = null
                 savedState = null
                 callbackHandled = false
-                finishAuth()
+                onAuthSuccess()
             } catch (e: Exception) {
                 callbackHandled = false
                 error = AuthErrorMessages.fromThrowable(e)
@@ -142,12 +126,17 @@ fun AuthScreen(
         oauthCallbackUri?.let { handleCallback(it) }
     }
 
-    fun startOAuth() {
+    fun joinNow() {
         scope.launch {
             isLoading = true
             error = null
             callbackHandled = false
             try {
+                if (SessionResolver.tryCreatorHandoff(sessionHandoff, tokenStore)) {
+                    WearPlayerAuthSync.push(context, tokenStore)
+                    onAuthSuccess()
+                    return@launch
+                }
                 val endpoints = authService.discoverEndpoints()
                 val verifier = PkceUtils.generateCodeVerifier()
                 val state = PkceUtils.generateState()
@@ -164,23 +153,8 @@ fun AuthScreen(
         }
     }
 
-    fun startJoinNow() {
-        scope.launch {
-            isLoading = true
-            error = null
-            try {
-                if (SessionResolver.tryCreatorHandoff(creatorHandoff, tokenStore)) {
-                    WearPlayerAuthSync.push(context, tokenStore)
-                    finishAuth()
-                    return@launch
-                }
-                startOAuth()
-            } catch (e: Exception) {
-                error = AuthErrorMessages.fromThrowable(e)
-            } finally {
-                isLoading = false
-            }
-        }
+    LaunchedEffect(autoJoinTrigger) {
+        if (autoJoinTrigger > 0) joinNow()
     }
 
     fun submitReviewLogin() {
@@ -193,7 +167,7 @@ fun AuthScreen(
                 WearPlayerAuthSync.push(context, tokenStore)
                 showReviewDialog = false
                 reviewCode = ""
-                finishAuth()
+                onAuthSuccess()
             } catch (e: Exception) {
                 error = AuthErrorMessages.fromThrowable(e)
             } finally {
@@ -249,7 +223,7 @@ fun AuthScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 32.dp),
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -257,47 +231,74 @@ fun AuthScreen(
             painter = painterResource(R.drawable.eazpire_wear_logo),
             contentDescription = null,
             modifier = Modifier
-                .fillMaxWidth(0.75f)
-                .height(80.dp),
+                .fillMaxWidth(0.72f)
+                .height(72.dp),
         )
-        Spacer(modifier = Modifier.height(48.dp))
-        if (isLoading) {
-            CircularProgressIndicator(color = EazWearColors.Orange, modifier = Modifier.size(48.dp))
-        } else {
-            Button(
-                onClick = { startJoinNow() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .pointerInput(Unit) {
-                        detectTapGestures(onLongPress = { showReviewDialog = true })
-                    },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = EazWearColors.Orange,
-                    contentColor = Color.White,
-                ),
-                shape = RoundedCornerShape(12.dp),
+        Spacer(modifier = Modifier.height(32.dp))
+        Surface(
+            color = EazWearColors.AuthCard,
+            shape = RoundedCornerShape(20.dp),
+            tonalElevation = 2.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, EazWearColors.PanelBorder, RoundedCornerShape(20.dp)),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(stringResource(R.string.join_now), fontWeight = FontWeight.SemiBold)
-            }
-            if (showQrButton) {
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(
-                    onClick = onOpenQrFlow,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Text(stringResource(R.string.join_with_qr))
+                Text(
+                    text = stringResource(R.string.welcome_subtitle),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = EazWearColors.AuthCardMuted,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(28.dp))
+                if (isLoading) {
+                    CircularProgressIndicator(color = EazWearColors.Orange)
+                } else {
+                    Button(
+                        onClick = { joinNow() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                detectTapGestures(onLongPress = { showReviewDialog = true })
+                            },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = EazWearColors.Orange,
+                            contentColor = Color.White,
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.join_now),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    if (showQrButton) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = onJoinWithQr,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.join_with_qr),
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                }
+                error?.let {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                    )
                 }
             }
-        }
-        error?.let {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                it,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-            )
         }
     }
 }

@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -58,12 +59,17 @@ import com.eazpire.wear.ui.VaultScreen
 import com.eazpire.wear.ui.VerifyScreen
 import com.eazpire.wear.ui.WearBootSplashScreen
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
-private enum class AppPhase { Booting, Auth, QrMintGate, QrScan, Main }
+private const val BOOT_MIN_MS = 850L
+
+private enum class AppScreen { Booting, Auth, QrScan, MintGate, Main }
 
 class MainActivity : ComponentActivity() {
     private lateinit var tokenStore: SecureTokenStore
-    private lateinit var creatorHandoff: CreatorSessionHandoff
+    private lateinit var sessionHandoff: CreatorSessionHandoff
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,79 +78,19 @@ class MainActivity : ComponentActivity() {
         }
         WindowCompat.setDecorFitsSystemWindows(window, true)
         tokenStore = SecureTokenStore.get(this)
-        creatorHandoff = CreatorSessionHandoff(this)
+        sessionHandoff = CreatorSessionHandoff(this)
         setContent {
             val callbackUri = remember { intent?.data?.toString() }
-            val context = LocalContext.current
             EazWearTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    var phase by remember { mutableStateOf(AppPhase.Booting) }
-                    var splashProgress by remember { mutableIntStateOf(0) }
-                    var sessionProbe by remember {
-                        mutableStateOf(SessionProbeResult.NoSession)
-                    }
-
-                    LaunchedEffect(Unit) {
-                        val started = System.currentTimeMillis()
-                        sessionProbe = if (tokenStore.isLoggedIn()) {
-                            SessionProbeResult.LoggedIn
-                        } else if (SessionResolver.isCreatorInstalled(context)) {
-                            SessionProbeResult.HasExternalSession
-                        } else {
-                            SessionProbeResult.NoSession
-                        }
-                        splashProgress = 16
-                        val elapsed = System.currentTimeMillis() - started
-                        if (elapsed < 850L) delay(850L - elapsed)
-                        phase = if (tokenStore.isLoggedIn()) AppPhase.Main else AppPhase.Auth
-                    }
-
-                    when (phase) {
-                        AppPhase.Booting -> WearBootSplashScreen(targetProgress = splashProgress)
-                        AppPhase.Auth -> AuthScreen(
-                            tokenStore = tokenStore,
-                            sessionProbeResult = sessionProbe,
-                            creatorHandoff = creatorHandoff,
-                            onAuthSuccess = { phase = AppPhase.Main },
-                            onOpenQrFlow = { phase = AppPhase.QrMintGate },
-                            oauthCallbackUri = callbackUri,
-                        )
-                        AppPhase.QrMintGate -> QrMintGateRoute(
-                            tokenStore = tokenStore,
-                            onBack = { phase = AppPhase.Auth },
-                            onReadyToScan = { phase = AppPhase.QrScan },
-                        )
-                        AppPhase.QrScan -> QrScanScreen(
-                            onTokenScanned = { token ->
-                                if (tokenStore.isLoggedIn()) {
-                                    val ownerId = tokenStore.getOwnerId().orEmpty()
-                                    val jwt = tokenStore.getJwt()
-                                    if (!ownerId.isBlank() && !jwt.isNullOrBlank()) {
-                                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                            WearPlayerApi(jwt = jwt).artifactsClaimQr(token, ownerId)
-                                        }
-                                    }
-                                    phase = AppPhase.Main
-                                } else {
-                                    PendingQrClaimStore.save(context, token)
-                                    phase = AppPhase.Auth
-                                }
-                            },
-                            onCancel = { phase = AppPhase.Auth },
-                        )
-                        AppPhase.Main -> WearMainShell(
-                            tokenStore = tokenStore,
-                            onSignOut = {
-                                tokenStore.clear()
-                                WearPlayerAuthSync.clear(this@MainActivity)
-                                sessionProbe = SessionProbeResult.NoSession
-                                phase = AppPhase.Auth
-                            },
-                        )
-                    }
+                    WearApp(
+                        tokenStore = tokenStore,
+                        sessionHandoff = sessionHandoff,
+                        oauthCallbackUri = callbackUri,
+                    )
                 }
             }
         }
@@ -160,37 +106,102 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun QrMintGateRoute(
+private fun WearApp(
     tokenStore: SecureTokenStore,
-    onBack: () -> Unit,
-    onReadyToScan: () -> Unit,
+    sessionHandoff: CreatorSessionHandoff,
+    oauthCallbackUri: String?,
 ) {
-    var checking by remember { mutableStateOf(true) }
-    var hasArtifact by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var screen by remember { mutableStateOf(AppScreen.Booting) }
+    var sessionProbe by remember { mutableStateOf(SessionProbeResult.NoSession) }
+    var bootProgress by remember { mutableIntStateOf(4) }
+    var autoJoinTrigger by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(Unit) {
-        checking = true
-        hasArtifact = if (tokenStore.isLoggedIn()) {
-            val ownerId = tokenStore.getOwnerId().orEmpty()
-            val jwt = tokenStore.getJwt()
-            if (ownerId.isNotBlank() && !jwt.isNullOrBlank()) {
-                val inv = WearPlayerApi(jwt = jwt).artifactsInventory(ownerId)
-                WearPlayerApi(jwt = jwt).countMintedArtifacts(inv) >= 1
-            } else {
-                false
+    suspend fun resolveLoggedInDestination(): AppScreen = withContext(Dispatchers.IO) {
+        val ownerId = tokenStore.getOwnerId().orEmpty()
+        if (ownerId.isBlank()) return@withContext AppScreen.Auth
+
+        PendingQrClaimStore.peek(context)?.let { token ->
+            val api = WearPlayerApi(jwt = tokenStore.getJwt())
+            val claim = api.artifactsClaimQr(token, ownerId)
+            if (claim.optBoolean("ok", false)) {
+                PendingQrClaimStore.consume(context)
             }
-        } else {
-            false
         }
-        checking = false
-        if (hasArtifact) onReadyToScan()
+
+        val api = WearPlayerApi(jwt = tokenStore.getJwt())
+        val inventory = api.artifactsInventory(ownerId)
+        if (api.countMintedArtifacts(inventory) < 1) AppScreen.MintGate else AppScreen.Main
     }
 
-    when {
-        checking -> WearBootSplashScreen(targetProgress = 8)
-        hasArtifact -> Box(Modifier.fillMaxSize())
-        else -> MintGateScreen(onBack = onBack)
+    fun onAuthenticated() {
+        scope.launch {
+            screen = resolveLoggedInDestination()
+            if (screen == AppScreen.Main) {
+                WearPlayerAuthSync.push(context, tokenStore)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val startedAt = System.currentTimeMillis()
+        bootProgress = 8
+        val probe = SessionResolver.probeWithCreator(context, tokenStore, sessionHandoff)
+        sessionProbe = probe
+        bootProgress = 16
+
+        val elapsed = System.currentTimeMillis() - startedAt
+        if (elapsed < BOOT_MIN_MS) delay(BOOT_MIN_MS - elapsed)
+
+        screen = when (probe) {
+            SessionProbeResult.LoggedIn -> {
+                val dest = resolveLoggedInDestination()
+                if (dest == AppScreen.Main) WearPlayerAuthSync.push(context, tokenStore)
+                dest
+            }
+            SessionProbeResult.HasExternalSession,
+            SessionProbeResult.NoSession,
+            -> AppScreen.Auth
+        }
+    }
+
+    when (screen) {
+        AppScreen.Booting -> WearBootSplashScreen(targetProgress = bootProgress)
+        AppScreen.Auth -> AuthScreen(
+            tokenStore = tokenStore,
+            sessionHandoff = sessionHandoff,
+            sessionProbeResult = sessionProbe,
+            showQrButton = sessionProbe == SessionProbeResult.NoSession,
+            onAuthSuccess = { onAuthenticated() },
+            onJoinWithQr = { screen = AppScreen.QrScan },
+            oauthCallbackUri = oauthCallbackUri,
+            autoJoinTrigger = autoJoinTrigger,
+        )
+        AppScreen.QrScan -> QrScanScreen(
+            onTokenScanned = { token ->
+                PendingQrClaimStore.save(context, token)
+                screen = AppScreen.Auth
+                autoJoinTrigger += 1
+            },
+            onCancel = { screen = AppScreen.Auth },
+        )
+        AppScreen.MintGate -> MintGateScreen(
+            onBack = {
+                scope.launch {
+                    screen = if (tokenStore.isLoggedIn()) AppScreen.Main else AppScreen.Auth
+                }
+            },
+        )
+        AppScreen.Main -> WearMainShell(
+            tokenStore = tokenStore,
+            onSignOut = {
+                tokenStore.clear()
+                WearPlayerAuthSync.clear(context)
+                sessionProbe = SessionProbeResult.NoSession
+                screen = AppScreen.Auth
+            },
+        )
     }
 }
 
