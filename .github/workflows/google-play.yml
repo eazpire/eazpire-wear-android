@@ -38,7 +38,7 @@ jobs:
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           missing=""
-          for name in PLAY_SERVICE_ACCOUNT_JSON ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+          for name in PLAY_JSON KS_B64 KS_PASS KS_ALIAS KEY_PASS; do
             eval "val=\$$name"
             if [ -z "$val" ]; then missing="$missing $name"; fi
           done
