@@ -1,0 +1,3 @@
+# Required when opening wear-android/ or wear-os/ from monorepo (:wear-core is ../wear-core).
+# Run: .\scripts\wear-android\setup-wear-android-studio.ps1
+sdk.dir=C:/Users/YOUR_USER/AppData/Local/Android/Sdk

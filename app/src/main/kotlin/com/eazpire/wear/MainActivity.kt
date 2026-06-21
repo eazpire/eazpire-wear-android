@@ -33,6 +33,7 @@ import com.eazpire.wear.core.api.WearPlayerApi
 import com.eazpire.wear.core.auth.SecureTokenStore
 import com.eazpire.wear.health.StepSyncHelper
 import com.eazpire.wear.sync.WearPlayerAuthSync
+import com.eazpire.wear.theme.EazWearScreenBackground
 import com.eazpire.wear.theme.EazWearTheme
 import com.eazpire.wear.ui.AuthScreen
 import com.eazpire.wear.ui.FeedScreen
@@ -96,7 +97,8 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
     val stepSync = remember { StepSyncHelper(context) }
     val tabs = WearTab.entries
 
-    Scaffold(
+    EazWearScreenBackground {
+        Scaffold(
         topBar = {
             TextButton(onClick = onSignOut, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text(stringResource(R.string.sign_out))
@@ -148,5 +150,6 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
                 WearTab.Move -> MoveScreen(api, stepSync)
             }
         }
+    }
     }
 }

@@ -1,0 +1,2 @@
+# Copy to local.properties (gitignored). Run setup-wear-android-studio.ps1 to generate automatically.
+sdk.dir=C:/Users/YOUR_USER/AppData/Local/Android/Sdk
