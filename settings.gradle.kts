@@ -19,4 +19,6 @@ dependencyResolutionManagement {
 rootProject.name = "eazpire-wear-android"
 include(":app")
 include(":wear-core")
-project(":wear-core").projectDir = file("../wear-core")
+// Monorepo: ../wear-core (sibling). Mirror repo sync: ./wear-core (same root).
+project(":wear-core").projectDir = listOf(file("wear-core"), file("../wear-core"))
+    .first { it.isDirectory }
