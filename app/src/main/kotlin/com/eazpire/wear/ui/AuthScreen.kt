@@ -1,16 +1,17 @@
 package com.eazpire.wear.ui
 
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -202,70 +203,83 @@ fun AuthScreen(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxSize(),
     ) {
-        Surface(
-            color = EazWearColors.Panel,
-            shape = RoundedCornerShape(20.dp),
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, EazWearColors.PanelBorder, RoundedCornerShape(20.dp)),
-            contentColor = EazWearColors.TextPrimary,
+                .height(220.dp)
+                .background(EazWearColors.Orange),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Text(
+                text = stringResource(R.string.welcome_title),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(EazWearColors.Background)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Surface(
+                color = EazWearColors.AuthCard,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, EazWearColors.PanelBorder.copy(alpha = 0.35f), RoundedCornerShape(20.dp)),
+                shadowElevation = 8.dp,
             ) {
-                Text(
-                    text = stringResource(R.string.welcome_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = EazWearColors.TextPrimary,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = stringResource(R.string.welcome_subtitle),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = EazWearColors.TextSubtle,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(modifier = Modifier.height(28.dp))
-                if (isLoading) {
-                    CircularProgressIndicator(color = EazWearColors.Orange)
-                } else {
-                    Button(
-                        onClick = { startLogin() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .pointerInput(Unit) {
-                                detectTapGestures(onLongPress = { showReviewDialog = true })
-                            },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = EazWearColors.Orange,
-                            contentColor = Color.White,
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.sign_in),
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-                error?.let {
-                    Spacer(modifier = Modifier.height(16.dp))
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     Text(
-                        it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = stringResource(R.string.welcome_subtitle),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = EazWearColors.AuthCardMuted,
                         textAlign = TextAlign.Center,
                     )
+                    Spacer(modifier = Modifier.height(28.dp))
+                    if (isLoading) {
+                        CircularProgressIndicator(color = EazWearColors.Orange)
+                    } else {
+                        Button(
+                            onClick = { startLogin() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(onLongPress = { showReviewDialog = true })
+                                },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = EazWearColors.Orange,
+                                contentColor = Color.White,
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.sign_in),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                    error?.let {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
         }

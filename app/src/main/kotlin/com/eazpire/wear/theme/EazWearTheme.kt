@@ -4,13 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.LocalContentColor
 
 /** Brand tokens aligned with eazpire.com (orange #f97316, navy bg). */
 object EazWearColors {
@@ -24,6 +21,10 @@ object EazWearColors {
     val TextPrimary = Color(0xFFFFFFFF)
     val TextMuted = Color(0xFF94A3B8)
     val TextSubtle = Color(0xFFE2E8F0)
+    /** Auth card — light surface for readable login copy on any device. */
+    val AuthCard = Color(0xFFFFFFFF)
+    val AuthCardText = Color(0xFF0F172A)
+    val AuthCardMuted = Color(0xFF475569)
 }
 
 private val WearColorScheme = darkColorScheme(
@@ -41,16 +42,7 @@ private val WearColorScheme = darkColorScheme(
 
 @Composable
 fun EazWearTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = WearColorScheme) {
-        CompositionLocalProvider(LocalContentColor provides EazWearColors.TextPrimary) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = EazWearColors.Background,
-            ) {
-                content()
-            }
-        }
-    }
+    MaterialTheme(colorScheme = WearColorScheme, content = content)
 }
 
 /** Optional wrapper for tab screens — same solid bg. */

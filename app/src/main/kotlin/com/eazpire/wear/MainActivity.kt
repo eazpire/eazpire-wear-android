@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.view.WindowCompat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -53,29 +55,37 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         tokenStore = SecureTokenStore.get(this)
         setContent {
             val callbackUri = remember { intent?.data?.toString() }
             EazWearTheme {
-                var loggedIn by remember { mutableStateOf(tokenStore.isLoggedIn()) }
-                if (!loggedIn) {
-                    AuthScreen(
-                        tokenStore = tokenStore,
-                        onAuthSuccess = {
-                            loggedIn = true
-                            WearPlayerAuthSync.push(this, tokenStore)
-                        },
-                        oauthCallbackUri = callbackUri,
-                    )
-                } else {
-                    WearMainShell(
-                        tokenStore = tokenStore,
-                        onSignOut = {
-                            tokenStore.clear()
-                            WearPlayerAuthSync.clear(this)
-                            loggedIn = false
-                        },
-                    )
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .systemBarsPadding(),
+                    color = EazWearColors.Background,
+                ) {
+                    var loggedIn by remember { mutableStateOf(tokenStore.isLoggedIn()) }
+                    if (!loggedIn) {
+                        AuthScreen(
+                            tokenStore = tokenStore,
+                            onAuthSuccess = {
+                                loggedIn = true
+                                WearPlayerAuthSync.push(this, tokenStore)
+                            },
+                            oauthCallbackUri = callbackUri,
+                        )
+                    } else {
+                        WearMainShell(
+                            tokenStore = tokenStore,
+                            onSignOut = {
+                                tokenStore.clear()
+                                WearPlayerAuthSync.clear(this)
+                                loggedIn = false
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -102,8 +112,7 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
     val tabs = WearTab.entries
 
     Scaffold(
-        modifier = Modifier.systemBarsPadding(),
-        containerColor = Color.Transparent,
+        containerColor = EazWearColors.Background,
         topBar = {
             TextButton(onClick = onSignOut, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text(
