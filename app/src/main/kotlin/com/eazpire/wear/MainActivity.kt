@@ -1,7 +1,9 @@
 package com.eazpire.wear
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,7 +11,6 @@ import androidx.core.view.WindowCompat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Feed
@@ -55,16 +56,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            window.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
+        }
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         tokenStore = SecureTokenStore.get(this)
         setContent {
             val callbackUri = remember { intent?.data?.toString() }
             EazWearTheme {
                 Surface(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .systemBarsPadding(),
-                    color = EazWearColors.Background,
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     var loggedIn by remember { mutableStateOf(tokenStore.isLoggedIn()) }
                     if (!loggedIn) {
@@ -123,7 +125,7 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
         },
         bottomBar = {
             NavigationBar(
-                containerColor = EazWearColors.Panel.copy(alpha = 0.95f),
+                containerColor = EazWearColors.Panel,
                 contentColor = EazWearColors.TextPrimary,
             ) {
                 tabs.forEachIndexed { index, wearTab ->

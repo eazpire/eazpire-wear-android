@@ -32,7 +32,7 @@ fun WearLoading(modifier: Modifier = Modifier) {
     ) {
         CircularProgressIndicator(color = EazWearColors.Orange)
         Spacer(modifier = Modifier.height(12.dp))
-        Text(stringResource(R.string.loading), color = EazWearColors.TextSubtle)
+        Text(stringResource(R.string.loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -68,7 +68,7 @@ fun WearStatCard(title: String, value: String, modifier: Modifier = Modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(value, style = MaterialTheme.typography.headlineSmall, color = EazWearColors.TextPrimary)
+            Text(value, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -86,7 +86,7 @@ fun WearSimpleList(items: List<String>, emptyText: String) {
     ) {
         items(items) { line ->
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Text(line, modifier = Modifier.padding(12.dp), color = EazWearColors.TextPrimary)
+                Text(line, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurface)
             }
         }
     }

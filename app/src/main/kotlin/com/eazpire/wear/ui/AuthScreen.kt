@@ -225,7 +225,7 @@ fun AuthScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(EazWearColors.Background)
+                .background(MaterialTheme.colorScheme.background)
                 .padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -233,10 +233,10 @@ fun AuthScreen(
             Surface(
                 color = EazWearColors.AuthCard,
                 shape = RoundedCornerShape(20.dp),
+                tonalElevation = 2.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, EazWearColors.PanelBorder.copy(alpha = 0.35f), RoundedCornerShape(20.dp)),
-                shadowElevation = 8.dp,
+                    .border(1.dp, EazWearColors.PanelBorder, RoundedCornerShape(20.dp)),
             ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp),
