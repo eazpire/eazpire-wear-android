@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Eazpire Wear</string>
+    <string name="tab_hub">Hub</string>
+    <string name="tab_feed">Feed</string>
+    <string name="tab_verify">Verify</string>
+    <string name="tab_squad">Squad</string>
+    <string name="tab_vault">Vault</string>
+    <string name="tab_move">Move</string>
+    <string name="sign_in">Sign in</string>
+    <string name="sign_out">Sign out</string>
+    <string name="loading">Loading…</string>
+    <string name="error_generic">Something went wrong</string>
+    <string name="retry">Retry</string>
+    <string name="eaz_balance">EAZ Balance</string>
+    <string name="steps_today">Steps today</string>
+    <string name="sync_steps">Sync steps</string>
+    <string name="daily_claim">Daily claim</string>
+    <string name="pair_watch">Pair watch</string>
+    <string name="no_posts">No posts yet</string>
+    <string name="no_artifacts">No artifacts yet</string>
+    <string name="no_network">No squad members yet</string>
+    <string name="welcome_title">Eazpire Wear Player</string>
+    <string name="welcome_subtitle">Hub, feed, verify, squad, vault &amp; move-to-earn</string>
+</resources>

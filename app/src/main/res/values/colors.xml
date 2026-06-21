@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="wear_bg">#07080D</color>
+    <color name="wear_panel">#111421</color>
+    <color name="wear_orange">#FF7A1A</color>
+    <color name="wear_purple">#A78BFA</color>
+    <color name="wear_text">#F8FAFC</color>
+    <color name="wear_muted">#A7ADBD</color>
+</resources>
