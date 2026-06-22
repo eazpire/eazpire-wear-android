@@ -22,12 +22,15 @@ fun WearBrandSlotImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
+    preferLocalDrawable: Boolean = false,
 ) {
     val context = LocalContext.current
     val repo = remember { BrandAssetsRepository.get(context) }
     val urls by repo.urls.collectAsState()
-    LaunchedEffect(slot) { repo.refreshIfStale() }
-    val remoteUrl = urls[slot]
+    if (!preferLocalDrawable) {
+        LaunchedEffect(slot) { repo.refreshIfStale() }
+    }
+    val remoteUrl = if (preferLocalDrawable) null else urls[slot]
     if (!remoteUrl.isNullOrBlank()) {
         AsyncImage(
             model = ImageRequest.Builder(context).data(remoteUrl).crossfade(true).build(),

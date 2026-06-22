@@ -231,6 +231,7 @@ fun AuthScreen(
             slot = BrandAssetSlots.WEAR_LOGO,
             fallbackResId = R.drawable.eazpire_wear_logo,
             contentDescription = null,
+            preferLocalDrawable = true,
             modifier = Modifier
                 .fillMaxWidth(0.72f)
                 .height(72.dp),

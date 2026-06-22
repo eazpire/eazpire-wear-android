@@ -97,6 +97,7 @@ fun WearBootSplashScreen(
             fallbackResId = R.drawable.eazpire_wear_logo,
             contentDescription = null,
             contentScale = ContentScale.Fit,
+            preferLocalDrawable = true,
             modifier = Modifier
                 .fillMaxWidth(0.72f)
                 .aspectRatio(WEAR_LOGO_ASPECT)

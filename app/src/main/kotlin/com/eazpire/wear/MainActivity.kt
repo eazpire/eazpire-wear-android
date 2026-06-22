@@ -1,9 +1,10 @@
 package com.eazpire.wear
 
 import android.content.Intent
-import android.content.pm.ActivityInfo
+import android.graphics.Color as AndroidColor
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -17,12 +18,10 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.eazpire.wear.auth.CreatorSessionHandoff
 import com.eazpire.wear.auth.PendingQrClaimStore
 import com.eazpire.wear.auth.SessionProbeResult
@@ -47,6 +47,7 @@ import com.eazpire.wear.core.auth.SecureTokenStore
 import com.eazpire.wear.health.StepSyncHelper
 import com.eazpire.wear.sync.WearPlayerAuthSync
 import com.eazpire.wear.theme.EazWearColors
+import com.eazpire.wear.theme.EazWearScreenBackground
 import com.eazpire.wear.theme.EazWearTheme
 import com.eazpire.wear.ui.AuthScreen
 import com.eazpire.wear.ui.FeedScreen
@@ -61,6 +62,8 @@ import com.eazpire.wear.ui.WearBootSplashScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Dispatchers
 
 private const val BOOT_MIN_MS = 850L
@@ -73,19 +76,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            window.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
-        }
         WindowCompat.setDecorFitsSystemWindows(window, true)
+        window.statusBarColor = AndroidColor.parseColor("#FAFAFA")
+        window.navigationBarColor = AndroidColor.parseColor("#FFFFFF")
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
+        }
+        // Emulator HWUI bug (101010-2 / black frame after splash): software layer fallback.
+        if (isProbablyEmulator()) {
+            window.decorView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        }
         tokenStore = SecureTokenStore.get(this)
         sessionHandoff = CreatorSessionHandoff(this)
         setContent {
             val callbackUri = remember { intent?.data?.toString() }
             EazWearTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
+                EazWearScreenBackground {
                     WearApp(
                         tokenStore = tokenStore,
                         sessionHandoff = sessionHandoff,
@@ -147,22 +154,29 @@ private fun WearApp(
     LaunchedEffect(Unit) {
         val startedAt = System.currentTimeMillis()
         bootProgress = 8
-        val probe = SessionResolver.probeWithCreator(context, tokenStore, sessionHandoff)
-        sessionProbe = probe
-        bootProgress = 16
+        try {
+            withTimeout(12_000L) {
+                val probe = SessionResolver.probeWithCreator(context, tokenStore, sessionHandoff)
+                sessionProbe = probe
+                bootProgress = 16
 
-        val elapsed = System.currentTimeMillis() - startedAt
-        if (elapsed < BOOT_MIN_MS) delay(BOOT_MIN_MS - elapsed)
+                val elapsed = System.currentTimeMillis() - startedAt
+                if (elapsed < BOOT_MIN_MS) delay(BOOT_MIN_MS - elapsed)
 
-        screen = when (probe) {
-            SessionProbeResult.LoggedIn -> {
-                val dest = resolveLoggedInDestination()
-                if (dest == AppScreen.Main) WearPlayerAuthSync.push(context, tokenStore)
-                dest
+                screen = when (probe) {
+                    SessionProbeResult.LoggedIn -> {
+                        val dest = resolveLoggedInDestination()
+                        if (dest == AppScreen.Main) WearPlayerAuthSync.push(context, tokenStore)
+                        dest
+                    }
+                    SessionProbeResult.HasExternalSession,
+                    SessionProbeResult.NoSession,
+                    -> AppScreen.Auth
+                }
             }
-            SessionProbeResult.HasExternalSession,
-            SessionProbeResult.NoSession,
-            -> AppScreen.Auth
+        } catch (_: TimeoutCancellationException) {
+            screen = AppScreen.Auth
+            sessionProbe = SessionProbeResult.NoSession
         }
     }
 
@@ -204,6 +218,12 @@ private fun WearApp(
         )
     }
 }
+
+private fun isProbablyEmulator(): Boolean =
+    Build.FINGERPRINT.startsWith("generic") ||
+        Build.FINGERPRINT.contains("emulator", ignoreCase = true) ||
+        Build.MODEL.contains("Emulator", ignoreCase = true) ||
+        Build.MODEL.contains("sdk_gphone", ignoreCase = true)
 
 private enum class WearTab { Hub, Feed, Verify, Squad, Vault, Move }
 
