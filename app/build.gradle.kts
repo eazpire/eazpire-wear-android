@@ -87,6 +87,7 @@ dependencies {
     implementation("androidx.concurrent:concurrent-futures-ktx:1.2.0")
     implementation("com.google.guava:guava:33.3.1-android")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("io.coil-kt:coil-compose:2.5.0")
 }
 
 tasks.register("checkReleaseSigning") {

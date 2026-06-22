@@ -34,7 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
+import com.eazpire.wear.core.brand.BrandAssetSlots
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -227,8 +227,9 @@ fun AuthScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Image(
-            painter = painterResource(R.drawable.eazpire_wear_logo),
+        WearBrandSlotImage(
+            slot = BrandAssetSlots.WEAR_LOGO,
+            fallbackResId = R.drawable.eazpire_wear_logo,
             contentDescription = null,
             modifier = Modifier
                 .fillMaxWidth(0.72f)
