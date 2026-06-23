@@ -40,3 +40,26 @@ data class ArtifactItem(
     val name: String,
     val rarity: String = "",
 )
+
+data class MoveSession(
+    val id: String = "",
+    val characterId: Long = 0L,
+    val energyMinutes: Int = 0,
+    val startedAt: Long = 0L,
+    val endsAt: Long = 0L,
+    val remainingMs: Long = 0L,
+    val status: String = "",
+)
+
+data class DiscoveryStatus(
+    val unlocked: Boolean = false,
+    val totalCellsDiscovered: Long = 0L,
+    val session: MoveSession? = null,
+    val homeCityId: String = "",
+)
+
+data class DiscoverySyncResult(
+    val cellsNew: Int = 0,
+    val cellsDuplicate: Int = 0,
+    val cellsRejected: Int = 0,
+)

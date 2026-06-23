@@ -186,6 +186,8 @@ fun VaultScreen(api: WearPlayerApi, ownerId: String) {
 fun MoveScreen(api: WearPlayerApi, stepSync: com.eazpire.wear.health.StepSyncHelper) {
     var status by remember { mutableStateOf("—") }
     var steps by remember { mutableStateOf("—") }
+    var discoveryCells by remember { mutableStateOf("—") }
+    var exploring by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var syncing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -199,6 +201,9 @@ fun MoveScreen(api: WearPlayerApi, stepSync: com.eazpire.wear.health.StepSyncHel
                 val m = api.moveToEarnStatusModel()
                 status = "EAZ today: ${m.eazEarnedToday} · claim: ${m.dailyClaimAvailable}"
                 steps = m.stepsToday.toString()
+                val d = api.discoveryStatusModel()
+                discoveryCells = d.totalCellsDiscovered.toString()
+                exploring = d.session != null
             }.onFailure { error = it.message }
             loading = false
         }
@@ -214,7 +219,12 @@ fun MoveScreen(api: WearPlayerApi, stepSync: com.eazpire.wear.health.StepSyncHel
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             WearStatCard(stringResource(R.string.steps_today), steps)
+            WearStatCard(stringResource(R.string.discovery_cells), discoveryCells)
             Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            com.eazpire.wear.discovery.DiscoveryExploreControls(exploring = exploring) { active ->
+                exploring = active
+                load()
+            }
             Button(
                 onClick = {
                     scope.launch {

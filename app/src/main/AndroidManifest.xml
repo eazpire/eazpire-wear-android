@@ -5,6 +5,11 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
@@ -38,6 +43,11 @@
                     android:host="wear-callback" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".discovery.DiscoveryExploreService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <activity-alias
             android:name="ViewPermissionUsageActivity"

@@ -17,6 +17,10 @@
     <string name="eaz_balance">EAZ Balance</string>
     <string name="steps_today">Steps today</string>
     <string name="sync_steps">Sync steps</string>
+    <string name="discovery_cells">Cells discovered</string>
+    <string name="discovery_start">Start Explore</string>
+    <string name="discovery_stop">Stop Explore</string>
+    <string name="discovery_notification_title">World Discovery</string>
     <string name="daily_claim">Daily claim</string>
     <string name="pair_watch">Pair watch</string>
     <string name="no_posts">No posts yet</string>

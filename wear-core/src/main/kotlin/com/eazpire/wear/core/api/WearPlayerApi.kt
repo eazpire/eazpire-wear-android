@@ -5,6 +5,8 @@ import com.eazpire.wear.core.model.ArtifactItem
 import com.eazpire.wear.core.model.BalanceSnapshot
 import com.eazpire.wear.core.model.FeedPost
 import com.eazpire.wear.core.model.MoveToEarnStatus
+import com.eazpire.wear.core.model.MoveSession
+import com.eazpire.wear.core.model.DiscoveryStatus
 import com.eazpire.wear.core.model.NetworkMember
 import com.eazpire.wear.core.model.VerifyItem
 import com.eazpire.wear.core.model.WearEarnStatus
@@ -253,6 +255,66 @@ class WearPlayerApi(
             method = "POST",
             body = JSONObject().put("steps_delta", stepsDelta),
         )
+
+    // --- World Discovery ---
+
+    suspend fun discoveryConfig(): JSONObject = dispatch("discovery-config")
+
+    suspend fun discoveryStatus(): JSONObject = dispatch("discovery-status")
+
+    suspend fun discoveryStatusModel(): DiscoveryStatus {
+        val json = discoveryStatus()
+        val sessionJson = json.optJSONObject("session")
+        val session = sessionJson?.let {
+            MoveSession(
+                id = it.optString("id", ""),
+                characterId = it.optLong("character_id", 0L),
+                energyMinutes = it.optInt("energy_minutes", 0),
+                startedAt = it.optLong("started_at", 0L),
+                endsAt = it.optLong("ends_at", 0L),
+                remainingMs = it.optLong("remaining_ms", 0L),
+                status = it.optString("status", ""),
+            )
+        }
+        val home = json.optJSONObject("home")
+        return DiscoveryStatus(
+            unlocked = json.optBoolean("unlocked", false),
+            totalCellsDiscovered = json.optLong("total_cells_discovered", 0L),
+            session = session,
+            homeCityId = home?.optString("city_id", "") ?: "",
+        )
+    }
+
+    suspend fun moveSessionStart(): JSONObject =
+        dispatch("move-session-start", method = "POST", body = JSONObject())
+
+    suspend fun moveSessionEnd(): JSONObject =
+        dispatch("move-session-end", method = "POST", body = JSONObject())
+
+    suspend fun discoverySyncTrack(batchId: String, points: JSONArray): JSONObject {
+        val body = JSONObject()
+            .put("batch_id", batchId)
+            .put("points", points)
+            .put(
+                "client",
+                JSONObject()
+                    .put("platform", "wear-android")
+                    .put("session_id", batchId),
+            )
+        return dispatch("discovery-sync-track", method = "POST", body = body)
+    }
+
+    suspend fun discoveryLootNearby(): JSONObject = dispatch("discovery-loot-nearby")
+
+    suspend fun discoveryLootClaim(lootId: String): JSONObject =
+        dispatch(
+            "discovery-loot-claim",
+            method = "POST",
+            body = JSONObject().put("loot_id", lootId),
+        )
+
+    suspend fun discoveryRankingsGlobal(limit: Int = 50): JSONObject =
+        dispatch("discovery-rankings-global", query = mapOf("limit" to limit.toString()))
 
     // --- Feed ---
 
