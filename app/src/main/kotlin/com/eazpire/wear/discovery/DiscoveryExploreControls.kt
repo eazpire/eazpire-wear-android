@@ -26,6 +26,9 @@ fun DiscoveryExploreControls(
 ) {
     val context = LocalContext.current
     var pendingStart by remember { mutableStateOf(false) }
+    var showConsent by remember {
+        mutableStateOf(!DiscoveryConsentStore.hasConsent(context))
+    }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -38,12 +41,7 @@ fun DiscoveryExploreControls(
         pendingStart = false
     }
 
-    fun toggle() {
-        if (exploring) {
-            DiscoveryExploreService.stop(context)
-            onExploreChange(false)
-            return
-        }
+    fun startExplore() {
         val fine = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -62,8 +60,32 @@ fun DiscoveryExploreControls(
         }
     }
 
+    if (showConsent) {
+        DiscoveryConsentScreen(
+            onAccept = {
+                DiscoveryConsentStore.setConsent(context, true)
+                showConsent = false
+            },
+            onDecline = {
+                DiscoveryConsentStore.setConsent(context, false)
+                showConsent = false
+            },
+        )
+        return
+    }
+
     Column {
-        Button(onClick = { toggle() }, modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = {
+                if (exploring) {
+                    DiscoveryExploreService.stop(context)
+                    onExploreChange(false)
+                } else {
+                    startExplore()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Text(
                 if (exploring) {
                     stringResource(R.string.discovery_stop)

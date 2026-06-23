@@ -23,15 +23,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.UUID
-import java.util.concurrent.CopyOnWriteArrayList
 
 class DiscoveryExploreService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val buffer = CopyOnWriteArrayList<JSONObject>()
+    private val trackBuffer = DiscoveryTrackBuffer(flushThreshold = 15)
     private var api: WearPlayerApi? = null
     private var fusedClient = LocationServices.getFusedLocationProviderClient(this)
     private var locationCallback: LocationCallback? = null
@@ -70,15 +66,14 @@ class DiscoveryExploreService : Service() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 for (loc in result.locations) {
-                    buffer.add(
-                        JSONObject()
-                            .put("lat", loc.latitude)
-                            .put("lng", loc.longitude)
-                            .put("ts", loc.time)
-                            .put("accuracy_m", loc.accuracy.toDouble()),
+                    trackBuffer.add(
+                        loc.latitude,
+                        loc.longitude,
+                        loc.time,
+                        loc.accuracy.toDouble(),
                     )
                 }
-                if (buffer.size >= 15) flushBuffer()
+                if (trackBuffer.shouldFlush()) flushBuffer()
             }
         }
 
@@ -94,12 +89,8 @@ class DiscoveryExploreService : Service() {
     }
 
     private fun flushBuffer() {
-        if (buffer.isEmpty()) return
-        val points = JSONArray()
-        val snapshot = buffer.toList()
-        buffer.clear()
-        snapshot.forEach { points.put(it) }
-        val batchId = UUID.randomUUID().toString()
+        val payload = trackBuffer.drainForUpload() ?: return
+        val (batchId, points) = payload
         scope.launch {
             runCatching {
                 api?.discoverySyncTrack(batchId, points)

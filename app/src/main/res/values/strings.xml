@@ -21,6 +21,10 @@
     <string name="discovery_start">Start Explore</string>
     <string name="discovery_stop">Stop Explore</string>
     <string name="discovery_notification_title">World Discovery</string>
+    <string name="discovery_consent_title">Location &amp; trail consent</string>
+    <string name="discovery_consent_body">World Discovery uses GPS while you explore. We store map cells permanently and compressed trail batches for up to 90 days to prevent cheating. Steps and EAZ stay separate unless you sync them.</string>
+    <string name="discovery_consent_accept">I agree — start exploring</string>
+    <string name="discovery_consent_decline">Not now</string>
     <string name="daily_claim">Daily claim</string>
     <string name="pair_watch">Pair watch</string>
     <string name="no_posts">No posts yet</string>
