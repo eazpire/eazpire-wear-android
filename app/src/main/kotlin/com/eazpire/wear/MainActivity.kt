@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -128,6 +129,29 @@ private fun WearApp(
     var sessionProbe by remember { mutableStateOf(SessionProbeResult.NoSession) }
     var bootProgress by remember { mutableIntStateOf(4) }
     var autoJoinTrigger by remember { mutableIntStateOf(0) }
+
+    val activity = context as? ComponentActivity
+    SideEffect {
+        activity?.window?.let { window ->
+            val controller = WindowInsetsControllerCompat(window, window.decorView)
+            when (screen) {
+                AppScreen.Auth -> {
+                    window.statusBarColor = AndroidColor.parseColor("#07080D")
+                    window.navigationBarColor = AndroidColor.parseColor("#05060A")
+                    window.decorView.setBackgroundColor(AndroidColor.parseColor("#07080D"))
+                    controller.isAppearanceLightStatusBars = false
+                    controller.isAppearanceLightNavigationBars = false
+                }
+                else -> {
+                    window.statusBarColor = AndroidColor.parseColor("#FAFAFA")
+                    window.navigationBarColor = AndroidColor.parseColor("#FFFFFF")
+                    window.decorView.setBackgroundColor(AndroidColor.parseColor("#FAFAFA"))
+                    controller.isAppearanceLightStatusBars = true
+                    controller.isAppearanceLightNavigationBars = true
+                }
+            }
+        }
+    }
 
     LaunchedEffect(screen) {
         if (screen != AppScreen.Booting) onContentReady()

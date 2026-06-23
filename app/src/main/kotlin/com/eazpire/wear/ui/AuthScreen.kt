@@ -1,7 +1,7 @@
 package com.eazpire.wear.ui
 
 import android.net.Uri
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +53,7 @@ import com.eazpire.wear.auth.SessionResolver
 import com.eazpire.wear.auth.ShopifyAuthService
 import com.eazpire.wear.core.auth.SecureTokenStore
 import com.eazpire.wear.sync.WearPlayerAuthSync
+import com.eazpire.wear.theme.EazWearAuthBackground
 import com.eazpire.wear.theme.EazWearColors
 import kotlinx.coroutines.launch
 
@@ -222,85 +223,93 @@ fun AuthScreen(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        WearBrandSlotImage(
-            slot = BrandAssetSlots.WEAR_LOGO,
-            fallbackResId = R.drawable.eazpire_wear_logo,
-            contentDescription = null,
-            preferLocalDrawable = true,
+    EazWearAuthBackground {
+        Column(
             modifier = Modifier
-                .fillMaxWidth(0.72f)
-                .height(72.dp),
-        )
-        Spacer(modifier = Modifier.height(32.dp))
-        Surface(
-            color = EazWearColors.AuthCard,
-            shape = RoundedCornerShape(20.dp),
-            tonalElevation = 2.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, EazWearColors.PanelBorder, RoundedCornerShape(20.dp)),
+                .fillMaxSize()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+            WearBrandSlotImage(
+                slot = BrandAssetSlots.WEAR_LOGO,
+                fallbackResId = R.drawable.eazpire_wear_logo,
+                contentDescription = null,
+                preferLocalDrawable = true,
+                modifier = Modifier
+                    .fillMaxWidth(0.72f)
+                    .height(72.dp),
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            Surface(
+                color = EazWearColors.HubPanel,
+                shape = RoundedCornerShape(20.dp),
+                tonalElevation = 0.dp,
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, EazWearColors.HubCardBorder, RoundedCornerShape(20.dp)),
             ) {
-                Text(
-                    text = stringResource(R.string.welcome_subtitle),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = EazWearColors.AuthCardMuted,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(modifier = Modifier.height(28.dp))
-                if (isLoading) {
-                    CircularProgressIndicator(color = EazWearColors.Orange)
-                } else {
-                    Button(
-                        onClick = { joinNow() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .pointerInput(Unit) {
-                                detectTapGestures(onLongPress = { showReviewDialog = true })
-                            },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = EazWearColors.Orange,
-                            contentColor = Color.White,
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.join_now),
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    if (showQrButton) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = onJoinWithQr,
-                            modifier = Modifier.fillMaxWidth(),
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = stringResource(R.string.welcome_subtitle),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = EazWearColors.HubMuted,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.height(28.dp))
+                    if (isLoading) {
+                        CircularProgressIndicator(color = EazWearColors.HubCyan)
+                    } else {
+                        Button(
+                            onClick = { joinNow() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(onLongPress = { showReviewDialog = true })
+                                },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = EazWearColors.HubOrange,
+                                contentColor = Color(0xFF190802),
+                            ),
                             shape = RoundedCornerShape(12.dp),
                         ) {
                             Text(
-                                stringResource(R.string.join_with_qr),
-                                fontWeight = FontWeight.Medium,
+                                stringResource(R.string.join_now),
+                                fontWeight = FontWeight.SemiBold,
                             )
                         }
+                        if (showQrButton) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = onJoinWithQr,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = EazWearColors.HubButtonCharcoal,
+                                    contentColor = EazWearColors.HubText,
+                                ),
+                                border = BorderStroke(1.dp, EazWearColors.HubStroke2),
+                            ) {
+                                Text(
+                                    stringResource(R.string.join_with_qr),
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
                     }
-                }
-                error?.let {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                    )
+                    error?.let {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
         }
