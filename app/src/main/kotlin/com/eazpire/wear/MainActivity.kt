@@ -2,9 +2,8 @@ package com.eazpire.wear
 
 import android.content.Intent
 import android.graphics.Color as AndroidColor
-import android.os.Build
+import android.graphics.PixelFormat
 import android.os.Bundle
-import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -36,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.eazpire.wear.auth.CreatorSessionHandoff
@@ -65,6 +65,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val BOOT_MIN_MS = 850L
 
@@ -73,30 +74,34 @@ private enum class AppScreen { Booting, Auth, QrScan, MintGate, Main }
 class MainActivity : ComponentActivity() {
     private lateinit var tokenStore: SecureTokenStore
     private lateinit var sessionHandoff: CreatorSessionHandoff
+    private val oauthCallbackUriState = mutableStateOf<String?>(null)
+    private val keepSplashOnScreen = AtomicBoolean(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { keepSplashOnScreen.get() }
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, true)
+        window.setFormat(PixelFormat.RGBA_8888)
+        window.decorView.setBackgroundColor(AndroidColor.parseColor("#FAFAFA"))
         window.statusBarColor = AndroidColor.parseColor("#FAFAFA")
         window.navigationBarColor = AndroidColor.parseColor("#FFFFFF")
         WindowInsetsControllerCompat(window, window.decorView).apply {
             isAppearanceLightStatusBars = true
             isAppearanceLightNavigationBars = true
         }
-        // Emulator HWUI bug (101010-2 / black frame after splash): software layer fallback.
-        if (isProbablyEmulator()) {
-            window.decorView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-        }
         tokenStore = SecureTokenStore.get(this)
         sessionHandoff = CreatorSessionHandoff(this)
+        oauthCallbackUriState.value = intent?.data?.toString()
         setContent {
-            val callbackUri = remember { intent?.data?.toString() }
+            val oauthCallbackUri = oauthCallbackUriState.value
             EazWearTheme {
                 EazWearScreenBackground {
                     WearApp(
                         tokenStore = tokenStore,
                         sessionHandoff = sessionHandoff,
-                        oauthCallbackUri = callbackUri,
+                        oauthCallbackUri = oauthCallbackUri,
+                        onContentReady = { keepSplashOnScreen.set(false) },
                     )
                 }
             }
@@ -106,9 +111,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.data != null) {
-            recreate()
-        }
+        intent.data?.let { oauthCallbackUriState.value = it.toString() }
     }
 }
 
@@ -117,6 +120,7 @@ private fun WearApp(
     tokenStore: SecureTokenStore,
     sessionHandoff: CreatorSessionHandoff,
     oauthCallbackUri: String?,
+    onContentReady: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -124,6 +128,10 @@ private fun WearApp(
     var sessionProbe by remember { mutableStateOf(SessionProbeResult.NoSession) }
     var bootProgress by remember { mutableIntStateOf(4) }
     var autoJoinTrigger by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(screen) {
+        if (screen != AppScreen.Booting) onContentReady()
+    }
 
     suspend fun resolveLoggedInDestination(): AppScreen = withContext(Dispatchers.IO) {
         val ownerId = tokenStore.getOwnerId().orEmpty()
@@ -218,12 +226,6 @@ private fun WearApp(
         )
     }
 }
-
-private fun isProbablyEmulator(): Boolean =
-    Build.FINGERPRINT.startsWith("generic") ||
-        Build.FINGERPRINT.contains("emulator", ignoreCase = true) ||
-        Build.MODEL.contains("Emulator", ignoreCase = true) ||
-        Build.MODEL.contains("sdk_gphone", ignoreCase = true)
 
 private enum class WearTab { Hub, Feed, Verify, Squad, Vault, Move }
 
