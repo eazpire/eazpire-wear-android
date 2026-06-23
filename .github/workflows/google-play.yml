@@ -60,7 +60,7 @@ jobs:
 
       - name: Setup Android SDK
         if: steps.secrets.outputs.skip != 'true'
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Create local.properties
         if: steps.secrets.outputs.skip != 'true'
