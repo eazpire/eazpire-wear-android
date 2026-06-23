@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.eazpire.wear.R
 import com.eazpire.wear.auth.AuthBrowserLauncher
 import com.eazpire.wear.auth.AuthErrorMessages
+import com.eazpire.wear.auth.AuthSessionCookieClear
 import com.eazpire.wear.auth.AuthException
 import com.eazpire.wear.auth.CreatorSessionHandoff
 import com.eazpire.wear.auth.OAuthPkceStore
@@ -132,6 +133,7 @@ fun AuthScreen(
             error = null
             callbackHandled = false
             try {
+                AuthSessionCookieClear.clearShopifyAuthCookies()
                 if (SessionResolver.tryCreatorHandoff(sessionHandoff, tokenStore)) {
                     WearPlayerAuthSync.push(context, tokenStore)
                     onAuthSuccess()

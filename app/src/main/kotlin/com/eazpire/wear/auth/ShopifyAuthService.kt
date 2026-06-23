@@ -1,5 +1,6 @@
 package com.eazpire.wear.auth
 
+import android.net.Uri
 import com.eazpire.wear.core.auth.AuthConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,6 +36,26 @@ class ShopifyAuthService {
         authorizationEndpoint: String,
         codeVerifier: String,
         state: String,
+        preferGoogle: Boolean = false,
+    ): String {
+        val oauthAuthorizeUrl = buildOAuthAuthorizeUrl(authorizationEndpoint, codeVerifier, state)
+        if (!preferGoogle) return oauthAuthorizeUrl
+        val uri = Uri.parse(oauthAuthorizeUrl)
+        val authorizeUri = buildString {
+            append(uri.encodedPath.orEmpty())
+            uri.encodedQuery?.let { append("?").append(it) }
+        }
+        return buildString {
+            append("https://shopify.com/authentication/${AuthConfig.SHOP_ID}/social/google")
+            append("?client_id=").append(java.net.URLEncoder.encode(AuthConfig.CLIENT_ID, "UTF-8"))
+            append("&authorize_uri=").append(java.net.URLEncoder.encode(authorizeUri, "UTF-8"))
+        }
+    }
+
+    private fun buildOAuthAuthorizeUrl(
+        authorizationEndpoint: String,
+        codeVerifier: String,
+        state: String,
     ): String {
         val codeChallenge = PkceUtils.generateCodeChallenge(codeVerifier)
         val nonce = PkceUtils.generateState()
@@ -48,7 +69,8 @@ class ShopifyAuthService {
             append("&nonce=").append(java.net.URLEncoder.encode(nonce, "UTF-8"))
             append("&code_challenge=").append(java.net.URLEncoder.encode(codeChallenge, "UTF-8"))
             append("&code_challenge_method=S256")
-            append("&prompt=").append(java.net.URLEncoder.encode("select_account", "UTF-8"))
+            append("&prompt=").append(java.net.URLEncoder.encode("login select_account", "UTF-8"))
+            append("&max_age=0")
         }
     }
 
