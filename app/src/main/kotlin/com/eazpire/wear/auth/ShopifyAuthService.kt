@@ -49,6 +49,8 @@ class ShopifyAuthService {
             append("https://shopify.com/authentication/${AuthConfig.SHOP_ID}/social/google")
             append("?client_id=").append(java.net.URLEncoder.encode(AuthConfig.CLIENT_ID, "UTF-8"))
             append("&authorize_uri=").append(java.net.URLEncoder.encode(authorizeUri, "UTF-8"))
+            append("&prompt=").append(java.net.URLEncoder.encode("login select_account", "UTF-8"))
+            append("&max_age=0")
         }
     }
 
