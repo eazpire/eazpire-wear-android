@@ -48,8 +48,7 @@ class ShopifyAuthService {
             append("&nonce=").append(java.net.URLEncoder.encode(nonce, "UTF-8"))
             append("&code_challenge=").append(java.net.URLEncoder.encode(codeChallenge, "UTF-8"))
             append("&code_challenge_method=S256")
-            append("&prompt=").append(java.net.URLEncoder.encode("login select_account", "UTF-8"))
-            append("&max_age=0")
+            append("&prompt=").append(java.net.URLEncoder.encode("select_account", "UTF-8"))
         }
     }
 
