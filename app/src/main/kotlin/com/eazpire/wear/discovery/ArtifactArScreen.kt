@@ -416,8 +416,6 @@ private fun ArtifactWorldArScene(
     var placementAnchor by remember { mutableStateOf<Anchor?>(null) }
     /** Anchor created on tap but not mounted until plane textures have settled (Filament crash). */
     var stagedPlacementAnchor by remember { mutableStateOf<Anchor?>(null) }
-    var previewAnchor by remember { mutableStateOf<Anchor?>(null) }
-    var lastPreviewPose by remember { mutableStateOf<com.google.ar.core.Pose?>(null) }
     var lastPlaneHit by remember { mutableStateOf<HitResult?>(null) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
     var hasValidSurface by remember { mutableStateOf(false) }
@@ -474,7 +472,6 @@ private fun ArtifactWorldArScene(
     val modelAssetPath = remember(artifact.modelUrl) { resolveArModelAssetPath(artifact.modelUrl) }
     val autoAnimate = remember(artifact.modelUrl) { resolveAutoAnimate(artifact.modelUrl) }
     val glbImportRotation = remember(modelAssetPath) { artifactGlbImportRotation(modelAssetPath) }
-    val previewGlbInstance = rememberModelInstance(modelLoader, modelAssetPath)
     val placedGlbInstance = rememberModelInstance(modelLoader, modelAssetPath)
     val isArtifactPlaced = placementAnchor != null
 
@@ -491,12 +488,6 @@ private fun ArtifactWorldArScene(
         showPlaneRenderer = true
     }
 
-    fun clearPreviewAnchor() {
-        previewAnchor?.detach()
-        previewAnchor = null
-        lastPreviewPose = null
-    }
-
     fun placeArtifactAtScreenPoint(screenX: Float, screenY: Float) {
         if (isPlacementTransition || placementAnchor != null) return
         val frame = latestFrame ?: return
@@ -504,16 +495,13 @@ private fun ArtifactWorldArScene(
             ?.takeIf { it.isValidPlaneHit() }
             ?: lastPlaneHit?.takeIf { it.isValidPlaneHit() }
             ?: return
-        Log.d(ARTIFACT_AR_LOG_TAG, "place tap — staging anchor (preview detach first)")
-        clearPreviewAnchor()
+        Log.d(ARTIFACT_AR_LOG_TAG, "place tap — staging anchor (no preview model in scene)")
         stagedPlacementAnchor = hit.createAnchor()
     }
 
     LaunchedEffect(stagedPlacementAnchor) {
         val staged = stagedPlacementAnchor ?: return@LaunchedEffect
-        // 1) Let preview ModelNode leave the Filament scene.
-        repeat(3) { withFrameNanos { } }
-        // 2) Hide plane overlay before mounting the placed model (textures must unbind cleanly).
+        // Hide plane overlay before mounting the placed model (textures must unbind cleanly).
         showPlaneRenderer = false
         repeat(4) { withFrameNanos { } }
         if (stagedPlacementAnchor !== staged) {
@@ -528,20 +516,17 @@ private fun ArtifactWorldArScene(
 
     fun enterSpecialPlacement() {
         detachPlacementAnchor()
-        clearPreviewAnchor()
         placementMode = ArtifactArPlacementMode.SpecialManual
     }
 
     fun restoreDefaultPlacement() {
         placementMode = ArtifactArPlacementMode.Default
         detachPlacementAnchor()
-        clearPreviewAnchor()
     }
 
     fun requestClose() {
         if (isClosing) return
         isClosing = true
-        clearPreviewAnchor()
         cancelStagedPlacement()
         detachPlacementAnchor()
         arLifecycleOwner.destroy()
@@ -549,7 +534,6 @@ private fun ArtifactWorldArScene(
 
     DisposableEffect(Unit) {
         onDispose {
-            clearPreviewAnchor()
             cancelStagedPlacement()
             detachPlacementAnchor()
         }
@@ -601,54 +585,11 @@ private fun ArtifactWorldArScene(
                         screenWidthPx = screenWidthPx,
                         screenHeightPx = screenHeightPx,
                     )
+                    // UI-only: hand icon turns orange. No AnchorNode/ModelNode while planeRenderer is active.
                     hasValidSurface = planeHit != null
                     lastPlaneHit = planeHit
-
-                    if (
-                        placementAnchor == null &&
-                        !isPlacementTransition &&
-                        planeHit != null
-                    ) {
-                        val hitPose = planeHit.hitPose
-                        if (shouldUpdatePreviewAnchor(lastPreviewPose, hitPose)) {
-                            previewAnchor?.detach()
-                            previewAnchor = planeHit.createAnchor()
-                            lastPreviewPose = hitPose
-                        }
-                    } else if (placementAnchor != null || isPlacementTransition) {
-                        clearPreviewAnchor()
-                    } else {
-                        clearPreviewAnchor()
-                    }
                 },
             ) {
-                if (placementAnchor == null && !isPlacementTransition) {
-                    previewAnchor?.let { preview ->
-                        AnchorNode(anchor = preview) {
-                            if (previewGlbInstance != null) {
-                                ModelNode(
-                                    modelInstance = previewGlbInstance,
-                                    autoAnimate = false,
-                                    scaleToUnits = 0.65f,
-                                    rotation = glbImportRotation,
-                                )
-                            } else {
-                                artworkBitmap?.let { bitmap ->
-                                    Node(
-                                        position = Position(y = ARTIFACT_AR_PLACEMENT_HEIGHT_M),
-                                        rotation = Rotation(x = -90f),
-                                    ) {
-                                        ImageNode(
-                                            bitmap = bitmap,
-                                            size = Size(x = 0.65f, y = 0.65f),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 placementAnchor?.let { worldAnchor ->
                     AnchorNode(anchor = worldAnchor) {
                         Node(

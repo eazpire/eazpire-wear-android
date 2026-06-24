@@ -8,7 +8,6 @@ import com.google.ar.core.Point
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
-import kotlin.math.sqrt
 
 /** Distance in front of the user for the world-locked artifact (meters). */
 const val ARTIFACT_AR_PLACEMENT_DISTANCE_M = 2.5f
@@ -19,9 +18,6 @@ const val ARTIFACT_AR_PLACEMENT_HEIGHT_M = 0.9f
 /** Screen-normalized aim point — slightly below center where the hand icon sits. */
 const val ARTIFACT_AR_HIT_TEST_X = 0.5f
 const val ARTIFACT_AR_HIT_TEST_Y = 0.55f
-
-/** Minimum movement (m) before the preview anchor is recreated. */
-private const val PREVIEW_POSE_UPDATE_THRESHOLD_M = 0.025f
 
 /**
  * Returns the best plane hit under the screen center, or null when no tracked surface is found.
@@ -103,10 +99,3 @@ fun HitResult.isValidPlaneHit(): Boolean {
     return false
 }
 
-fun shouldUpdatePreviewAnchor(previousPose: Pose?, nextPose: Pose): Boolean {
-    if (previousPose == null) return true
-    val dx = previousPose.tx() - nextPose.tx()
-    val dy = previousPose.ty() - nextPose.ty()
-    val dz = previousPose.tz() - nextPose.tz()
-    return sqrt(dx * dx + dy * dy + dz * dz) >= PREVIEW_POSE_UPDATE_THRESHOLD_M
-}
