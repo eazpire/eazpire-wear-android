@@ -90,4 +90,7 @@
     <string name="artifact_ar_special_place_hint">Point your phone at a surface, then tap the hand to place the artifact here.</string>
     <string name="artifact_ar_special_cancel">Use normal placement instead</string>
     <string name="artifact_ar_special_no_surface">No surface detected yet. Move your phone slowly.</string>
+    <string name="artifact_ar_light_on">Turn on virtual light</string>
+    <string name="artifact_ar_light_off">Turn off virtual light</string>
+    <string name="artifact_ar_light_cd">Virtual light toggle</string>
 </resources>

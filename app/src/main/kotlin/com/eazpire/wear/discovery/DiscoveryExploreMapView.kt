@@ -253,12 +253,13 @@ fun DiscoveryExploreMapView(
                 inRange = artifactInRange,
                 onClick = onArtifactClick,
                 onOutOfRangeClick = onArtifactOutOfRangeClick,
-                modifier = Modifier.offset {
-                    IntOffset(
-                        (markerScreen.x - previewHalfPx).roundToInt(),
-                        (markerScreen.y - previewHalfPx).roundToInt(),
-                    )
-                },
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            (markerScreen.x - previewHalfPx).roundToInt(),
+                            (markerScreen.y - previewHalfPx).roundToInt(),
+                        )
+                    },
                 size = previewSizeDp,
             )
         }

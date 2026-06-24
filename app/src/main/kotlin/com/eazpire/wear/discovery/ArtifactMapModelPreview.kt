@@ -1,8 +1,6 @@
 package com.eazpire.wear.discovery
 
 import android.view.MotionEvent
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -14,13 +12,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.View as FilamentView
 import com.google.android.filament.utils.KTX1Loader
-import io.github.sceneview.SceneView
-import io.github.sceneview.SurfaceType
 import io.github.sceneview.createEnvironment
 import io.github.sceneview.createRenderer
 import io.github.sceneview.createView
@@ -28,9 +26,12 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberCameraNode
+import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberMainLightNode
+import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderer
@@ -52,6 +53,7 @@ fun ArtifactMapModelPreview(
     val context = LocalContext.current
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val modelInstance = rememberModelInstance(modelLoader, modelUrl)
     val scene = rememberScene(engine)
@@ -60,6 +62,7 @@ fun ArtifactMapModelPreview(
             blendMode = FilamentView.BlendMode.TRANSLUCENT
         }
     }
+    val collisionSystem = rememberCollisionSystem(filamentView)
     val filamentRenderer = rememberRenderer(engine) {
         createRenderer(engine).apply {
             clearOptions = clearOptions.apply {
@@ -80,11 +83,26 @@ fun ArtifactMapModelPreview(
             skybox = null,
         )
     }
+    val environment = rememberEnvironment(environmentLoader, isOpaque = false) {
+        transparentEnvironment
+    }
+    val mainLightNode = rememberMainLightNode(engine) {
+        intensity = 90_000f
+    }
     val cameraNode = rememberCameraNode(engine) {
         position = Position(x = 0f, y = 0.15f, z = 1.35f)
         lookAt(Position(y = 0.05f))
     }
     var rotationY by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(filamentView, filamentRenderer, scene) {
+        scene.skybox = null
+        filamentView.blendMode = FilamentView.BlendMode.TRANSLUCENT
+        filamentRenderer.clearOptions = filamentRenderer.clearOptions.apply {
+            clear = true
+            clearColor = floatArrayOf(0f, 0f, 0f, 0f)
+        }
+    }
 
     LaunchedEffect(Unit) {
         var lastFrame = withFrameNanos { it }
@@ -100,25 +118,26 @@ fun ArtifactMapModelPreview(
     Box(
         modifier = modifier
             .size(size)
-            .background(Color.Transparent),
+            .clipToBounds()
+            .graphicsLayer {
+                alpha = 1f
+                clip = true
+            },
     ) {
         if (modelInstance != null) {
-            SceneView(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Transparent),
+            TransparentMapSceneView(
+                modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
+                materialLoader = materialLoader,
+                environmentLoader = environmentLoader,
                 view = filamentView,
                 renderer = filamentRenderer,
                 scene = scene,
+                environment = environment,
+                mainLightNode = mainLightNode,
                 cameraNode = cameraNode,
-                cameraManipulator = null,
-                surfaceType = SurfaceType.TextureSurface,
-                isOpaque = false,
-                environment = rememberEnvironment(environmentLoader, isOpaque = false) {
-                    transparentEnvironment
-                },
+                collisionSystem = collisionSystem,
                 onTouchEvent = { event, _ ->
                     if (event.action == MotionEvent.ACTION_UP) {
                         if (inRange) onClick() else onOutOfRangeClick()

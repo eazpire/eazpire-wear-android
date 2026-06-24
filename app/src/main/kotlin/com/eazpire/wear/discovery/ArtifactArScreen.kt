@@ -4,26 +4,37 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.util.Log
+import android.view.MotionEvent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +50,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -55,6 +68,7 @@ import com.eazpire.wear.R
 import com.eazpire.wear.core.model.MapArtifactDefaults
 import com.eazpire.wear.core.model.MapArtifactProduct
 import com.eazpire.wear.theme.EazWearColors
+import com.google.android.filament.LightManager
 import com.google.android.filament.utils.KTX1Loader
 import com.google.ar.core.Anchor
 import com.google.ar.core.ArCoreApk
@@ -140,6 +154,12 @@ private fun requestArCoreInstall(activity: Activity): ArCoreSupport =
             else -> ArCoreSupport.InstallFailed
         }
     }.getOrElse { ArCoreSupport.InstallFailed }
+
+private const val ARTIFACT_AR_DEFAULT_MAIN_LIGHT = 120_000f
+private const val ARTIFACT_AR_BOOSTED_MAIN_LIGHT = 380_000f
+private const val ARTIFACT_AR_POINT_LIGHT_INTENSITY = 650_000f
+private const val ARTIFACT_AR_ROTATION_SENSITIVITY = 0.35f
+private const val ARTIFACT_AR_LOG_TAG = "ArtifactAr"
 
 /** Prefer bundled GLB assets in AR — remote URLs often load meshes without embedded textures. */
 private fun resolveArModelAssetPath(modelUrl: String?): String {
@@ -344,7 +364,7 @@ private fun ArtifactWorldArScene(
         rememberAREnvironment(engine)
     }
     val mainLightNode = rememberMainLightNode(engine) {
-        intensity = 120_000f
+        intensity = ARTIFACT_AR_DEFAULT_MAIN_LIGHT
     }
 
     var placementAnchor by remember { mutableStateOf<Anchor?>(null) }
@@ -356,6 +376,15 @@ private fun ArtifactWorldArScene(
     var artworkBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var placementMode by remember { mutableStateOf(ArtifactArPlacementMode.Default) }
     var modelRotationY by remember { mutableFloatStateOf(0f) }
+    var rotationDragStartX by remember { mutableFloatStateOf(Float.NaN) }
+    var virtualLightOn by remember { mutableStateOf(false) }
+
+    SideEffect {
+        mainLightNode.intensity =
+            if (virtualLightOn) ARTIFACT_AR_BOOSTED_MAIN_LIGHT else ARTIFACT_AR_DEFAULT_MAIN_LIGHT
+        arEnvironment?.indirectLight?.intensity =
+            if (virtualLightOn) 42_000f else 30_000f
+    }
 
     val modelAssetPath = remember(artifact.modelUrl) { resolveArModelAssetPath(artifact.modelUrl) }
     val glbInstance = rememberModelInstance(modelLoader, modelAssetPath)
@@ -435,6 +464,34 @@ private fun ArtifactWorldArScene(
                 sessionConfiguration = { _, config ->
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 },
+                onTouchEvent = { event, _ ->
+                    if (!isArtifactPlaced) return@ARScene false
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            rotationDragStartX = event.x
+                            Log.d(ARTIFACT_AR_LOG_TAG, "rotation drag start x=${event.x}")
+                            true
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            val startX = rotationDragStartX
+                            if (!startX.isNaN()) {
+                                val deltaX = event.x - startX
+                                modelRotationY -= deltaX * ARTIFACT_AR_ROTATION_SENSITIVITY
+                                rotationDragStartX = event.x
+                                Log.d(
+                                    ARTIFACT_AR_LOG_TAG,
+                                    "rotation drag delta=$deltaX y=$modelRotationY",
+                                )
+                            }
+                            true
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            rotationDragStartX = Float.NaN
+                            true
+                        }
+                        else -> false
+                    }
+                },
                 onSessionFailed = {
                     if (!isClosing) arSessionFailed = true
                 },
@@ -500,7 +557,7 @@ private fun ArtifactWorldArScene(
                             artworkBitmap?.let { bitmap ->
                                 Node(
                                     position = Position(y = ARTIFACT_AR_PLACEMENT_HEIGHT_M),
-                                    rotation = Rotation(x = -90f),
+                                    rotation = Rotation(x = -90f, y = modelRotationY),
                                 ) {
                                     ImageNode(
                                         bitmap = bitmap,
@@ -509,20 +566,46 @@ private fun ArtifactWorldArScene(
                                 }
                             }
                         }
+                        if (virtualLightOn) {
+                            LightNode(
+                                type = LightManager.Type.POINT,
+                                intensity = ARTIFACT_AR_POINT_LIGHT_INTENSITY,
+                                position = Position(y = 0.55f, z = 0.25f),
+                                apply = {
+                                    color(1.0f, 0.94f, 0.82f)
+                                    falloff(2.2f)
+                                },
+                            )
+                            LightNode(
+                                type = LightManager.Type.POINT,
+                                intensity = ARTIFACT_AR_POINT_LIGHT_INTENSITY * 0.35f,
+                                position = Position(y = 0.35f, x = -0.45f, z = 0.1f),
+                                apply = {
+                                    color(1.0f, 0.97f, 0.9f)
+                                    falloff(1.8f)
+                                },
+                            )
+                        }
                     }
                 }
             }
         }
 
         if (isArtifactPlaced) {
+            // Backup layer for Compose hit-testing; primary rotation is handled in ARScene.onTouchEvent
+            // because the embedded TextureView consumes touches before Compose siblings.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(1f)
-                    .pointerInput(Unit) {
-                        detectHorizontalDragGestures { change, dragAmount ->
+                    .zIndex(2f)
+                    .pointerInput(isArtifactPlaced) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { rotationDragStartX = it.x },
+                            onDragEnd = { rotationDragStartX = Float.NaN },
+                            onDragCancel = { rotationDragStartX = Float.NaN },
+                        ) { change, dragAmount ->
                             change.consume()
-                            modelRotationY -= dragAmount * 0.35f
+                            modelRotationY -= dragAmount * ARTIFACT_AR_ROTATION_SENSITIVITY
                         }
                     },
             )
@@ -672,10 +755,51 @@ private fun ArtifactWorldArScene(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             } else {
-                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val lightActionLabel = stringResource(
+                        if (virtualLightOn) {
+                            R.string.artifact_ar_light_off
+                        } else {
+                            R.string.artifact_ar_light_on
+                        },
+                    )
+                    IconButton(
+                        onClick = { virtualLightOn = !virtualLightOn },
+                        modifier = Modifier.semantics {
+                            contentDescription = lightActionLabel
+                        },
+                    ) {
+                        Icon(
+                            imageVector = if (virtualLightOn) {
+                                Icons.Filled.Lightbulb
+                            } else {
+                                Icons.Outlined.Lightbulb
+                            },
+                            contentDescription = stringResource(R.string.artifact_ar_light_cd),
+                            tint = if (virtualLightOn) {
+                                EazWearColors.HubOrange
+                            } else {
+                                EazWearColors.HubText
+                            },
+                            modifier = Modifier.size(32.dp),
+                        )
+                    }
+                    TextButton(onClick = { requestClose() }) {
+                        Text(
+                            stringResource(R.string.artifact_ar_close),
+                            color = EazWearColors.HubOrange,
+                        )
+                    }
+                }
             }
-            TextButton(onClick = { requestClose() }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
+            if (!isArtifactPlaced) {
+                TextButton(onClick = { requestClose() }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
+                }
             }
         }
     }
