@@ -1,6 +1,7 @@
 package com.eazpire.wear.auth
 
 import android.net.Uri
+import android.util.Log
 import com.eazpire.wear.core.auth.AuthConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,6 +14,10 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class ShopifyAuthService {
+    private companion object {
+        const val TAG = "EazWearAuth"
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -61,11 +66,13 @@ class ShopifyAuthService {
     ): String {
         val codeChallenge = PkceUtils.generateCodeChallenge(codeVerifier)
         val nonce = PkceUtils.generateState()
+        val redirectEncoded = java.net.URLEncoder.encode(AuthConfig.REDIRECT_URI, "UTF-8")
+        Log.i(TAG, "OAuth redirect_uri=${AuthConfig.REDIRECT_URI} encoded=$redirectEncoded")
         return buildString {
             append(authorizationEndpoint)
             append("?client_id=").append(java.net.URLEncoder.encode(AuthConfig.CLIENT_ID, "UTF-8"))
             append("&response_type=code")
-            append("&redirect_uri=").append(java.net.URLEncoder.encode(AuthConfig.REDIRECT_URI, "UTF-8"))
+            append("&redirect_uri=").append(redirectEncoded)
             append("&scope=").append(java.net.URLEncoder.encode(AuthConfig.SCOPE, "UTF-8"))
             append("&state=").append(java.net.URLEncoder.encode(state, "UTF-8"))
             append("&nonce=").append(java.net.URLEncoder.encode(nonce, "UTF-8"))

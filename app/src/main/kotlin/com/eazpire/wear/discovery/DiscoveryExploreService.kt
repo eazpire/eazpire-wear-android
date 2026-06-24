@@ -14,6 +14,7 @@ import com.eazpire.wear.MainActivity
 import com.eazpire.wear.R
 import com.eazpire.wear.core.api.WearPlayerApi
 import com.eazpire.wear.core.auth.SecureTokenStore
+import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -29,8 +30,13 @@ class DiscoveryExploreService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val trackBuffer = DiscoveryTrackBuffer(flushThreshold = 15)
     private var api: WearPlayerApi? = null
-    private var fusedClient = LocationServices.getFusedLocationProviderClient(this)
+    private lateinit var fusedClient: FusedLocationProviderClient
     private var locationCallback: LocationCallback? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        fusedClient = LocationServices.getFusedLocationProviderClient(this)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -99,7 +105,9 @@ class DiscoveryExploreService : Service() {
     }
 
     override fun onDestroy() {
-        locationCallback?.let { fusedClient.removeLocationUpdates(it) }
+        if (::fusedClient.isInitialized) {
+            locationCallback?.let { fusedClient.removeLocationUpdates(it) }
+        }
         flushBuffer()
         scope.launch {
             runCatching { api?.moveSessionEnd() }

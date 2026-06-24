@@ -4,14 +4,14 @@ import android.net.Uri
 
 /**
  * Shopify Customer Account OAuth for Eazpire Wear Player (phone app).
- * Register mobile client callback: shop.73952035098.eazpire://wear-callback
+ * Register mobile client callback: shop.73952035098.eazpire://callback (shared with Creator app)
  */
 object AuthConfig {
     const val SHOP_DOMAIN = "allyoucanpink.myshopify.com"
     const val SHOP_ID = "73952035098"
     const val OIDC_DISCOVERY_URL =
         "https://shopify.com/authentication/$SHOP_ID/.well-known/openid-configuration"
-    const val REDIRECT_URI = "shop.73952035098.eazpire://wear-callback"
+    const val REDIRECT_URI = "shop.73952035098.eazpire://callback"
     const val SHOPIFY_HTML_ACCEPT =
         "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
     const val SCOPE = "openid email customer-account-api:full"

@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,6 +30,7 @@ fun DiscoveryExploreControls(
     var showConsent by remember {
         mutableStateOf(!DiscoveryConsentStore.hasConsent(context))
     }
+    var locationDenied by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -37,11 +39,14 @@ fun DiscoveryExploreControls(
         if (ok && pendingStart) {
             DiscoveryExploreService.start(context)
             onExploreChange(true)
+        } else if (pendingStart) {
+            locationDenied = true
         }
         pendingStart = false
     }
 
     fun startExplore() {
+        locationDenied = false
         val fine = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -65,6 +70,7 @@ fun DiscoveryExploreControls(
             onAccept = {
                 DiscoveryConsentStore.setConsent(context, true)
                 showConsent = false
+                startExplore()
             },
             onDecline = {
                 DiscoveryConsentStore.setConsent(context, false)
@@ -92,6 +98,12 @@ fun DiscoveryExploreControls(
                 } else {
                     stringResource(R.string.discovery_start)
                 },
+            )
+        }
+        if (locationDenied) {
+            Text(
+                stringResource(R.string.discovery_location_required),
+                color = MaterialTheme.colorScheme.error,
             )
         }
     }

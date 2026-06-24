@@ -40,7 +40,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="shop.73952035098.eazpire"
-                    android:host="wear-callback" />
+                    android:host="callback" />
             </intent-filter>
         </activity>
 

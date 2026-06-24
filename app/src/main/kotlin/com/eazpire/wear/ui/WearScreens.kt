@@ -223,7 +223,14 @@ fun MoveScreen(api: WearPlayerApi, stepSync: com.eazpire.wear.health.StepSyncHel
             Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
             com.eazpire.wear.discovery.DiscoveryExploreControls(exploring = exploring) { active ->
                 exploring = active
-                load()
+                if (!active) load()
+            }
+            if (exploring) {
+                Text(
+                    stringResource(R.string.discovery_exploring_active),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
             Button(
                 onClick = {
