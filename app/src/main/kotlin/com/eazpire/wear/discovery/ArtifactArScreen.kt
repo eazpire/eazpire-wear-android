@@ -37,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -82,6 +83,7 @@ import io.github.sceneview.ar.rememberAREnvironment
 import io.github.sceneview.createEnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.rememberEngine
@@ -436,6 +438,16 @@ private fun ArtifactWorldArScene(
     var showPlaneRenderer by remember { mutableStateOf(true) }
     val isPlacementTransition = stagedPlacementAnchor != null
 
+    val cameraMovementTracker = remember { ArtifactArCameraMovementTracker() }
+    val gpsMascotMovement = rememberEazyMascotGpsMovement(userLocation)
+    val gpsMascotMovementRef = remember { AtomicReference<EazyMascotMovementState?>(null) }
+    var mascotGlbInstance by remember { mutableStateOf<ModelInstance?>(null) }
+    var mascotBobPhase by remember { mutableFloatStateOf(0f) }
+    var mascotLastBobNanos by remember { mutableLongStateOf(0L) }
+    var mascotTransform by remember { mutableStateOf(EazyMascot3DTransform()) }
+    val mascotGlbImportRotation = remember { artifactGlbImportRotation(EAZY_MASCOT_GLB_ASSET) }
+    val mascotAutoAnimate = remember { MapArtifactDefaults.isAnimatedGlb(EAZY_MASCOT_GLB_ASSET) }
+
     val rotationTouchState = remember { ArtifactArRotationTouchState() }
     /** Imperative target — rotate a plain [SceneNode] wrapper; [ModelNode] scaleToUnits ignores Y spin. */
     val placedModelNodeRef = remember { AtomicReference<SceneNode?>(null) }
@@ -474,6 +486,33 @@ private fun ArtifactWorldArScene(
             if (virtualLightOn) ARTIFACT_AR_BOOSTED_MAIN_LIGHT else ARTIFACT_AR_DEFAULT_MAIN_LIGHT
         arEnvironment?.indirectLight?.intensity =
             if (virtualLightOn) 42_000f else 30_000f
+    }
+
+    SideEffect {
+        gpsMascotMovementRef.set(gpsMascotMovement)
+    }
+
+    LaunchedEffect(modelLoader, isClosing) {
+        mascotGlbInstance = null
+        if (isClosing) return@LaunchedEffect
+        Log.d(ARTIFACT_AR_LOG_TAG, "mascot glb load scheduled")
+        delay(900)
+        repeat(4) { withFrameNanos { } }
+        if (isClosing) return@LaunchedEffect
+        val buffer = withContext(Dispatchers.IO) {
+            runCatching { context.assets.readBuffer(EAZY_MASCOT_GLB_ASSET) }.getOrNull()
+        }
+        if (buffer == null) {
+            Log.e(ARTIFACT_AR_LOG_TAG, "mascot glb asset read failed")
+            return@LaunchedEffect
+        }
+        Log.d(ARTIFACT_AR_LOG_TAG, "mascot glb buffer bytes=${buffer.remaining()}")
+        mascotGlbInstance = runCatching { modelLoader.createModelInstance(buffer) }
+            .onFailure { error ->
+                Log.e(ARTIFACT_AR_LOG_TAG, "mascot glb parse failed", error)
+            }
+            .getOrNull()
+        Log.d(ARTIFACT_AR_LOG_TAG, "mascot glb load done success=${mascotGlbInstance != null}")
     }
 
     val modelAssetPath = remember(artifact.modelUrl) { resolveArModelAssetPath(artifact.modelUrl) }
@@ -595,6 +634,7 @@ private fun ArtifactWorldArScene(
         placementAnchor = null
         stagedPlacementAnchor = null
         placedModelNodeRef.set(null)
+        mascotGlbInstance = null
         showPlaneRenderer = false
         repeat(ARTIFACT_AR_CLOSE_FRAME_WAIT_BEFORE_DESTROY) { withFrameNanos { } }
         Log.d(ARTIFACT_AR_LOG_TAG, "close: destroying deferred AR lifecycle")
@@ -674,6 +714,24 @@ private fun ArtifactWorldArScene(
                 onSessionUpdated = { _: Session, frame: Frame ->
                     if (isClosing) return@ARScene
                     latestFrame = frame
+                    cameraMovementTracker.updateFromFrame(frame)
+                    val mascotGlb = mascotGlbInstance
+                    if (mascotGlb != null) {
+                        mascotBobPhase += computeEazyMascotBobPhaseDelta(
+                            frame.timestamp,
+                            mascotLastBobNanos,
+                        )
+                        mascotLastBobNanos = frame.timestamp
+                        val movement = resolveEazyMascotMovement(
+                            cameraMovementTracker.state,
+                            gpsMascotMovementRef.get(),
+                        )
+                        mascotTransform = computeEazyMascot3DTransform(
+                            frame,
+                            movement,
+                            mascotBobPhase,
+                        )
+                    }
                     val planeHit = findArtifactPlaneHit(
                         frame = frame,
                         screenWidthPx = screenWidthPx,
@@ -684,6 +742,22 @@ private fun ArtifactWorldArScene(
                     lastPlaneHit = planeHit
                 },
             ) {
+                val mascotGlb = mascotGlbInstance
+                if (!isClosing && mascotGlb != null) {
+                    Node(
+                        position = mascotTransform.position,
+                        rotation = mascotTransform.rotation,
+                        scale = Scale(x = mascotTransform.scaleX),
+                    ) {
+                        ModelNode(
+                            modelInstance = mascotGlb,
+                            autoAnimate = mascotAutoAnimate,
+                            scaleToUnits = EAZY_MASCOT_SCALE_UNITS,
+                            rotation = mascotGlbImportRotation,
+                        )
+                    }
+                }
+
                 placementAnchor?.let { worldAnchor ->
                     AnchorNode(anchor = worldAnchor) {
                         Node(

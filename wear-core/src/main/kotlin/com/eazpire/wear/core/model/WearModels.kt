@@ -94,10 +94,15 @@ object MapArtifactDefaults {
     /** Bundled animated shop-card GLB (embedded glTF animation). */
     const val SHOP_CARD_ANIMATED_GLB_ASSET = "artifacts/shop-card-animated.glb"
 
+    /** Bundled Eazy mascot GLB for AR companion (may include embedded animation). */
+    const val EAZY_MASCOT_GLB_ASSET = "artifacts/eazy-mascot.glb"
+
     fun isAnimatedGlb(modelUrl: String?): Boolean {
         val path = normalizeGlbAssetPath(modelUrl)
         return path == SHOP_CARD_ANIMATED_GLB_ASSET ||
-            path.endsWith("shop-card-animated.glb")
+            path.endsWith("shop-card-animated.glb") ||
+            path == EAZY_MASCOT_GLB_ASSET ||
+            path.endsWith("eazy-mascot.glb")
     }
 
     /** Strip URL schemes; bundled assets stay as-is for rotation lookup. */

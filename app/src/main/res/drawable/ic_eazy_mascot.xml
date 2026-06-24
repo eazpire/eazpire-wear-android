@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+    <!-- Main blob (back) -->
+    <path
+        android:pathData="M30,62c0,-26 20,-44 44,-44 22,0 38,16 38,38 0,25 -19,44 -44,44 -5,0 -10,-0.8 -14.5,-2.2l-16.5,9.2 5.8,-16.8C35.7,83 30,73.2 30,62z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startColor="#FF9A2A"
+                android:endColor="#F97316"
+                android:startX="0"
+                android:startY="0"
+                android:endX="128"
+                android:endY="128"
+                android:type="linear" />
+        </aapt:attr>
+    </path>
+    <!-- White inner -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M56,39c-15,6 -24,20 -24,35 0,19 16,34 36,34 20,0 36,-16 36,-36 0,-21 -17,-38 -38,-38 -4.3,0 -8.4,0.7 -10,0.9z" />
+    <!-- Eyes -->
+    <path
+        android:fillColor="#F97316"
+        android:pathData="M72,52.5m5.5,0a5.5,5.5 0,1 1,-11 0a5.5,5.5 0,1 1,11 0" />
+    <path
+        android:fillColor="#F97316"
+        android:pathData="M90,45.5m4.5,0a4.5,4.5 0,1 1,-9 0a4.5,4.5 0,1 1,9 0" />
+    <!-- Mouth (ellipse) -->
+    <path
+        android:fillColor="#F97316"
+        android:pathData="M73,72 a6,4.5 0 1,1 12,0 a6,4.5 0 1,1 -12,0" />
+    <!-- Small circle (top) -->
+    <path
+        android:fillColor="#FF9A2A"
+        android:pathData="M50,21m7,0a7,7 0 1,1 -14 0a7,7 0 1,1 14 0" />
+</vector>
