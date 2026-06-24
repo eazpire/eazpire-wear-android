@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.eazpire.wear.core.model.MapArtifactDefaults
 import com.google.android.filament.View as FilamentView
 import com.google.android.filament.utils.KTX1Loader
 import io.github.sceneview.createEnvironment
@@ -39,8 +40,11 @@ import io.github.sceneview.rememberView
 import io.github.sceneview.utils.readBuffer
 import kotlinx.coroutines.isActive
 
-/** glTF Y-up meshes import flat in SceneView; −90° on X stands them upright on map/AR planes. */
-internal val ArtifactGlbImportRotation = Rotation(x = -90f)
+/** @see MapArtifactDefaults.glbDisplayConfig */
+internal fun artifactGlbImportRotation(modelUrl: String): Rotation {
+    val config = MapArtifactDefaults.glbDisplayConfig(modelUrl)
+    return Rotation(x = config.importRotationXDeg)
+}
 
 /** Small auto-rotating GLB preview for the discovery map (no AR session). */
 @Composable
@@ -96,6 +100,7 @@ fun ArtifactMapModelPreview(
         position = Position(x = 0f, y = 0.15f, z = 1.35f)
         lookAt(Position(y = 0.05f))
     }
+    val displayConfig = remember(modelUrl) { MapArtifactDefaults.glbDisplayConfig(modelUrl) }
     var rotationY by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(filamentView, filamentRenderer, scene) {
@@ -107,8 +112,8 @@ fun ArtifactMapModelPreview(
         }
     }
 
-    LaunchedEffect(autoAnimate) {
-        if (autoAnimate) return@LaunchedEffect
+    LaunchedEffect(displayConfig.mapAutoSpinY) {
+        if (!displayConfig.mapAutoSpinY) return@LaunchedEffect
         var lastFrame = withFrameNanos { it }
         while (isActive) {
             withFrameNanos { frameTime ->
@@ -149,14 +154,13 @@ fun ArtifactMapModelPreview(
                     modelInstance = modelInstance,
                     autoAnimate = autoAnimate,
                     scaleToUnits = 0.55f,
-                    rotation = if (autoAnimate) {
-                        ArtifactGlbImportRotation
-                    } else {
+                    rotation = if (displayConfig.mapAutoSpinY) {
                         Rotation(
-                            x = ArtifactGlbImportRotation.x,
+                            x = displayConfig.importRotationXDeg,
                             y = rotationY,
-                            z = ArtifactGlbImportRotation.z,
                         )
+                    } else {
+                        Rotation(x = displayConfig.importRotationXDeg)
                     },
                 )
             }

@@ -13,8 +13,8 @@ import org.osmdroid.views.overlay.Overlay
 
 /**
  * Geo-anchored GLB preview on the map via osmdroid [MapView.LayoutParams] (same mechanism as
- * built-in map markers). Taps use [ArtifactGlbTapOverlay.onSingleTapConfirmed] plus a transparent
- * [Marker] at the same [GeoPoint]; the preview view forwards touches to the [MapView].
+ * built-in map markers). Taps are handled on the preview [ComposeView] (tap slop) and via a
+ * transparent [Marker] at the same [GeoPoint]; [ArtifactGlbTapOverlay] remains as backup.
  */
 internal data class MapGlbPreviewHost(
     val id: String,

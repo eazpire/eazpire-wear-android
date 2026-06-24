@@ -467,6 +467,7 @@ private fun ArtifactWorldArScene(
 
     val modelAssetPath = remember(artifact.modelUrl) { resolveArModelAssetPath(artifact.modelUrl) }
     val autoAnimate = remember(artifact.modelUrl) { resolveAutoAnimate(artifact.modelUrl) }
+    val glbImportRotation = remember(modelAssetPath) { artifactGlbImportRotation(modelAssetPath) }
     val glbInstance = rememberModelInstance(modelLoader, modelAssetPath)
     val isArtifactPlaced = placementAnchor != null
 
@@ -592,7 +593,7 @@ private fun ArtifactWorldArScene(
                                     modelInstance = glbInstance,
                                     autoAnimate = autoAnimate,
                                     scaleToUnits = 0.65f,
-                                    rotation = ArtifactGlbImportRotation,
+                                    rotation = glbImportRotation,
                                 )
                             } else {
                                 artworkBitmap?.let { bitmap ->
@@ -625,7 +626,7 @@ private fun ArtifactWorldArScene(
                                     modelInstance = glbInstance,
                                     autoAnimate = autoAnimate,
                                     scaleToUnits = 0.75f,
-                                    rotation = ArtifactGlbImportRotation,
+                                    rotation = glbImportRotation,
                                 )
                             } else {
                                 artworkBitmap?.let { bitmap ->

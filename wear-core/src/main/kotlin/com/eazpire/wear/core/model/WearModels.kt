@@ -88,9 +88,33 @@ object MapArtifactDefaults {
     const val SHOP_CARD_ANIMATED_GLB_ASSET = "artifacts/shop-card-animated.glb"
 
     fun isAnimatedGlb(modelUrl: String?): Boolean {
-        val path = modelUrl?.trim().orEmpty()
+        val path = normalizeGlbAssetPath(modelUrl)
         return path == SHOP_CARD_ANIMATED_GLB_ASSET ||
             path.endsWith("shop-card-animated.glb")
+    }
+
+    /** Strip URL schemes; bundled assets stay as-is for rotation lookup. */
+    fun normalizeGlbAssetPath(modelUrl: String?): String =
+        modelUrl?.trim().orEmpty().substringAfterLast('/')
+
+    /**
+     * Per-asset GLB orientation on map + AR.
+     * - demo-artifact: −90° X so Y-up mesh reads upright; map spins on Y only.
+     * - shop-card-animated: no override — display and animate as authored in the file.
+     */
+    data class GlbDisplayConfig(
+        val importRotationXDeg: Float = 0f,
+        val mapAutoSpinY: Boolean = false,
+    )
+
+    fun glbDisplayConfig(modelUrl: String?): GlbDisplayConfig {
+        val path = normalizeGlbAssetPath(modelUrl)
+        return when {
+            isAnimatedGlb(modelUrl) -> GlbDisplayConfig()
+            path == DEMO_GLB_ASSET || path.endsWith("demo-artifact.glb") ->
+                GlbDisplayConfig(importRotationXDeg = -90f, mapAutoSpinY = true)
+            else -> GlbDisplayConfig()
+        }
     }
 
     fun demoFallback(): MapArtifactProduct = MapArtifactProduct(
