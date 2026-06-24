@@ -24,6 +24,22 @@ const val MAP_ARTIFACT_METERS_PER_FLOOR = 3.0
 fun resolveArtifactAltitudeM(userAltitudeM: Double?): Double =
     userAltitudeM ?: (MAP_ARTIFACT_ASSUMED_FLOOR * MAP_ARTIFACT_METERS_PER_FLOOR).toDouble()
 
+/** Offset range for a second artifact placed beside the first (meters). */
+const val MAP_ARTIFACT_SECOND_OFFSET_MIN_M = 4.0
+const val MAP_ARTIFACT_SECOND_OFFSET_MAX_M = 6.0
+
+/** Map artifact shown on the discovery map (geo anchor + GLB preview). */
+data class MapArtifactViewState(
+    val id: String,
+    val location: GeoPoint,
+    val modelUrl: String,
+    val name: String = "",
+    val inRange: Boolean = false,
+    val autoAnimate: Boolean = false,
+    val onClick: () -> Unit = {},
+    val onOutOfRangeClick: () -> Unit = {},
+)
+
 /** Place artifact a few meters from the user at the same floor / altitude. */
 fun placeArtifactNearUser(
     lat: Double,
@@ -38,6 +54,22 @@ fun placeArtifactNearUser(
     val northM = distanceM * cos(bearingRad)
     val eastM = distanceM * sin(bearingRad)
     return offsetFromUser(lat, lng, northM, eastM, altitudeM = resolvedAlt)
+}
+
+/** Place a second artifact a few meters east or north of the first (same altitude). */
+fun placeSecondArtifactNearFirst(
+    first: GeoPoint,
+    random: Random = Random.Default,
+): GeoPoint {
+    val distanceM = MAP_ARTIFACT_SECOND_OFFSET_MIN_M +
+        random.nextDouble() * (MAP_ARTIFACT_SECOND_OFFSET_MAX_M - MAP_ARTIFACT_SECOND_OFFSET_MIN_M)
+    val bearingRad = when (random.nextInt(2)) {
+        0 -> PI / 2.0 + (random.nextDouble() - 0.5) * PI / 8.0
+        else -> (random.nextDouble() - 0.5) * PI / 8.0
+    }
+    val northM = distanceM * cos(bearingRad)
+    val eastM = distanceM * sin(bearingRad)
+    return offsetFromUser(first.lat, first.lng, northM, eastM, altitudeM = first.altitudeM)
 }
 
 fun offsetFromUser(

@@ -211,6 +211,9 @@ private fun resolveArModelAssetPath(modelUrl: String?): String {
     return MapArtifactDefaults.DEMO_GLB_ASSET
 }
 
+private fun resolveAutoAnimate(modelUrl: String?): Boolean =
+    MapArtifactDefaults.isAnimatedGlb(resolveArModelAssetPath(modelUrl))
+
 @Composable
 fun ArtifactArScreen(
     artifact: MapArtifactProduct,
@@ -463,6 +466,7 @@ private fun ArtifactWorldArScene(
     }
 
     val modelAssetPath = remember(artifact.modelUrl) { resolveArModelAssetPath(artifact.modelUrl) }
+    val autoAnimate = remember(artifact.modelUrl) { resolveAutoAnimate(artifact.modelUrl) }
     val glbInstance = rememberModelInstance(modelLoader, modelAssetPath)
     val isArtifactPlaced = placementAnchor != null
 
@@ -586,7 +590,7 @@ private fun ArtifactWorldArScene(
                             if (glbInstance != null) {
                                 ModelNode(
                                     modelInstance = glbInstance,
-                                    autoAnimate = false,
+                                    autoAnimate = autoAnimate,
                                     scaleToUnits = 0.65f,
                                     rotation = ArtifactGlbImportRotation,
                                 )
@@ -619,7 +623,7 @@ private fun ArtifactWorldArScene(
                             if (glbInstance != null) {
                                 ModelNode(
                                     modelInstance = glbInstance,
-                                    autoAnimate = false,
+                                    autoAnimate = autoAnimate,
                                     scaleToUnits = 0.75f,
                                     rotation = ArtifactGlbImportRotation,
                                 )

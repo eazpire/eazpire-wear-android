@@ -171,6 +171,17 @@ class WearPlayerApi(
         return MapArtifactDefaults.demoFallback()
     }
 
+    /** Primary showcase artifact plus bundled animated shop-card on the map. */
+    suspend fun resolveMapArtifactProducts(limit: Int = 8): List<MapArtifactProduct> {
+        val primary = resolveMapArtifactProduct(limit)
+        val animated = MapArtifactDefaults.shopCardAnimatedFallback()
+        return if (primary.id == animated.id) {
+            MapArtifactDefaults.demoMapArtifacts()
+        } else {
+            listOf(primary, animated)
+        }
+    }
+
     suspend fun parseArtifacts(json: JSONObject): List<ArtifactItem> {
         val arr = json.optJSONArray("items") ?: json.optJSONArray("artifacts") ?: JSONArray()
         return (0 until arr.length()).mapNotNull { i ->

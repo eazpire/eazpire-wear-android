@@ -37,8 +37,11 @@ import com.eazpire.wear.discovery.DiscoveryExploreState
 import com.eazpire.wear.discovery.DiscoveryExploreStatsBar
 import com.eazpire.wear.discovery.DiscoveryInitialLocationEffect
 import com.eazpire.wear.discovery.GeoPoint
+import com.eazpire.wear.discovery.MapArtifactViewState
 import com.eazpire.wear.discovery.isWithinArtifactRange
 import com.eazpire.wear.discovery.placeArtifactNearUser
+import com.eazpire.wear.discovery.placeSecondArtifactNearFirst
+import com.eazpire.wear.core.model.MapArtifactDefaults
 import com.eazpire.wear.core.model.MapArtifactProduct
 import com.eazpire.wear.theme.EazWearColors
 import java.util.Locale
@@ -208,9 +211,11 @@ fun MoveScreen(api: WearPlayerApi) {
     var eazToday by remember { mutableStateOf("—") }
     var exploring by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var mapArtifact by remember { mutableStateOf<MapArtifactProduct?>(null) }
-    var artifactAnchor by remember { mutableStateOf<GeoPoint?>(null) }
+    var mapArtifacts by remember { mutableStateOf<List<MapArtifactProduct>>(emptyList()) }
+    var artifactAnchors by remember { mutableStateOf<Map<String, GeoPoint>>(emptyMap()) }
     var showAr by remember { mutableStateOf(false) }
+    var arArtifact by remember { mutableStateOf<MapArtifactProduct?>(null) }
+    var arArtifactLocation by remember { mutableStateOf<GeoPoint?>(null) }
     var artifactHint by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -221,16 +226,16 @@ fun MoveScreen(api: WearPlayerApi) {
     val sessionDistanceM by DiscoveryExploreState.sessionDistanceM.collectAsState()
     val sessionSteps by DiscoveryExploreState.sessionSteps.collectAsState()
 
-    LaunchedEffect(currentLocation) {
+    LaunchedEffect(currentLocation, mapArtifacts) {
         val user = currentLocation ?: return@LaunchedEffect
-        if (artifactAnchor == null) {
-            artifactAnchor = placeArtifactNearUser(user.lat, user.lng, user.altitudeM)
-        }
+        if (mapArtifacts.size < 2 || artifactAnchors.size >= 2) return@LaunchedEffect
+        val first = placeArtifactNearUser(user.lat, user.lng, user.altitudeM)
+        val second = placeSecondArtifactNearFirst(first)
+        artifactAnchors = mapOf(
+            mapArtifacts[0].id to first,
+            mapArtifacts[1].id to second,
+        )
     }
-
-    val artifactLocation = artifactAnchor
-
-    val artifactInRange = isWithinArtifactRange(currentLocation, artifactLocation)
 
     fun load() {
         scope.launch {
@@ -245,8 +250,8 @@ fun MoveScreen(api: WearPlayerApi) {
                 if (apiExploring && !liveExploring) {
                     DiscoveryExploreState.markExploring(true)
                 }
-                if (mapArtifact == null) {
-                    mapArtifact = api.resolveMapArtifactProduct()
+                if (mapArtifacts.isEmpty()) {
+                    mapArtifacts = api.resolveMapArtifactProducts()
                 }
             }.onFailure { error = it.message }
         }
@@ -269,14 +274,39 @@ fun MoveScreen(api: WearPlayerApi) {
 
     val distanceKm = String.format(Locale.US, "%.2f km", sessionDistanceM / 1000.0)
     val displaySteps = if (liveExploring) sessionSteps.toString() else steps
-    val artifact = mapArtifact
 
-    if (showAr && artifact != null) {
+    val mapArtifactViews = mapArtifacts.mapNotNull { product ->
+        val location = artifactAnchors[product.id] ?: return@mapNotNull null
+        MapArtifactViewState(
+            id = product.id,
+            location = location,
+            modelUrl = product.modelUrl.orEmpty(),
+            name = product.name,
+            inRange = isWithinArtifactRange(currentLocation, location),
+            autoAnimate = MapArtifactDefaults.isAnimatedGlb(product.modelUrl),
+            onClick = {
+                arArtifact = product
+                arArtifactLocation = location
+                showAr = true
+            },
+            onOutOfRangeClick = {
+                artifactHint = "too_far"
+            },
+        )
+    }
+
+    val nearestInRange = mapArtifactViews.firstOrNull { it.inRange }
+
+    if (showAr && arArtifact != null) {
         ArtifactArScreen(
-            artifact = artifact,
+            artifact = arArtifact!!,
             userLocation = currentLocation,
-            artifactLocation = artifactLocation,
-            onClose = { showAr = false },
+            artifactLocation = arArtifactLocation,
+            onClose = {
+                showAr = false
+                arArtifact = null
+                arArtifactLocation = null
+            },
         )
         return
     }
@@ -285,14 +315,7 @@ fun MoveScreen(api: WearPlayerApi) {
         DiscoveryExploreMapView(
             currentLocation = currentLocation,
             trackPoints = trackPoints,
-            artifactLocation = artifactLocation,
-            artifactModelUrl = artifact?.modelUrl,
-            artifactInRange = artifactInRange,
-            artifactName = artifact?.name.orEmpty(),
-            onArtifactClick = { showAr = true },
-            onArtifactOutOfRangeClick = {
-                artifactHint = "too_far"
-            },
+            mapArtifacts = mapArtifactViews,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -308,15 +331,22 @@ fun MoveScreen(api: WearPlayerApi) {
                 distanceKm = if (sessionDistanceM > 0) distanceKm else "0.00 km",
                 eazToday = eazToday,
             )
-            if (artifact != null && currentLocation != null) {
+            if (mapArtifactViews.isNotEmpty() && currentLocation != null) {
+                val statusArtifact = nearestInRange ?: mapArtifactViews.first()
                 Text(
                     text = when {
-                        artifactInRange -> stringResource(R.string.artifact_map_in_range, artifact.name)
-                        else -> stringResource(R.string.artifact_map_out_of_range, artifact.name)
+                        nearestInRange != null -> stringResource(
+                            R.string.artifact_map_in_range,
+                            statusArtifact.name,
+                        )
+                        else -> stringResource(
+                            R.string.artifact_map_out_of_range,
+                            statusArtifact.name,
+                        )
                     },
-                    color = if (artifactInRange) EazWearColors.HubOrange else EazWearColors.HubMuted,
+                    color = if (nearestInRange != null) EazWearColors.HubOrange else EazWearColors.HubMuted,
                     style = MaterialTheme.typography.bodySmall,
-                    fontWeight = if (artifactInRange) FontWeight.SemiBold else FontWeight.Normal,
+                    fontWeight = if (nearestInRange != null) FontWeight.SemiBold else FontWeight.Normal,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))

@@ -79,9 +79,19 @@ object MapArtifactDefaults {
      * (FALLBACK_DEMO_PRODUCTS). Used when showcase/inventory API has no artwork yet.
      */
     const val DEMO_PRODUCT_ID = "fallback-demo-tee-1"
+    const val SHOP_CARD_PRODUCT_ID = "fallback-demo-shop-card"
 
     /** Bundled GLB for map preview + AR (assets folder, no network). */
     const val DEMO_GLB_ASSET = "artifacts/demo-artifact.glb"
+
+    /** Bundled animated shop-card GLB (embedded glTF animation). */
+    const val SHOP_CARD_ANIMATED_GLB_ASSET = "artifacts/shop-card-animated.glb"
+
+    fun isAnimatedGlb(modelUrl: String?): Boolean {
+        val path = modelUrl?.trim().orEmpty()
+        return path == SHOP_CARD_ANIMATED_GLB_ASSET ||
+            path.endsWith("shop-card-animated.glb")
+    }
 
     fun demoFallback(): MapArtifactProduct = MapArtifactProduct(
         id = DEMO_PRODUCT_ID,
@@ -89,5 +99,19 @@ object MapArtifactDefaults {
         imageUrl = "https://cdn.shopify.com/s/files/1/0739/5203/5098/files/3457070110335593502_2048.jpg?v=1765037188",
         modelUrl = DEMO_GLB_ASSET,
         slotType = "upper_body",
+    )
+
+    fun shopCardAnimatedFallback(): MapArtifactProduct = MapArtifactProduct(
+        id = SHOP_CARD_PRODUCT_ID,
+        name = "Shop Card III",
+        imageUrl = "https://cdn.shopify.com/s/files/1/0739/5203/5098/files/3457070110335593502_2048.jpg?v=1765037188",
+        modelUrl = SHOP_CARD_ANIMATED_GLB_ASSET,
+        slotType = "collectible",
+    )
+
+    /** Default pair of map artifacts (static tee + animated shop card). */
+    fun demoMapArtifacts(): List<MapArtifactProduct> = listOf(
+        demoFallback(),
+        shopCardAnimatedFallback(),
     )
 }

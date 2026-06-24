@@ -17,6 +17,7 @@ import org.osmdroid.views.overlay.Overlay
  * [Marker] at the same [GeoPoint]; the preview view forwards touches to the [MapView].
  */
 internal data class MapGlbPreviewHost(
+    val id: String,
     val mapView: MapView,
     val previewView: ComposeView,
     val tapMarker: Marker,

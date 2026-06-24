@@ -49,6 +49,7 @@ fun ArtifactMapModelPreview(
     modifier: Modifier = Modifier,
     size: Dp = 56.dp,
     inRange: Boolean = true,
+    autoAnimate: Boolean = false,
     onClick: () -> Unit = {},
     onOutOfRangeClick: () -> Unit = {},
 ) {
@@ -106,7 +107,8 @@ fun ArtifactMapModelPreview(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(autoAnimate) {
+        if (autoAnimate) return@LaunchedEffect
         var lastFrame = withFrameNanos { it }
         while (isActive) {
             withFrameNanos { frameTime ->
@@ -145,12 +147,17 @@ fun ArtifactMapModelPreview(
             ) {
                 ModelNode(
                     modelInstance = modelInstance,
+                    autoAnimate = autoAnimate,
                     scaleToUnits = 0.55f,
-                    rotation = Rotation(
-                        x = ArtifactGlbImportRotation.x,
-                        y = rotationY,
-                        z = ArtifactGlbImportRotation.z,
-                    ),
+                    rotation = if (autoAnimate) {
+                        ArtifactGlbImportRotation
+                    } else {
+                        Rotation(
+                            x = ArtifactGlbImportRotation.x,
+                            y = rotationY,
+                            z = ArtifactGlbImportRotation.z,
+                        )
+                    },
                 )
             }
         }
