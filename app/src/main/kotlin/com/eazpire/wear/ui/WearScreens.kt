@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +36,8 @@ import com.eazpire.wear.discovery.DiscoveryExploreControlsRow
 import com.eazpire.wear.discovery.DiscoveryExploreMapView
 import com.eazpire.wear.discovery.DiscoveryExploreState
 import com.eazpire.wear.discovery.DiscoveryExploreStatsBar
+import com.eazpire.wear.discovery.MoveToEarnWalletCard
+import com.eazpire.wear.core.model.MoveToEarnWallet
 import com.eazpire.wear.discovery.DiscoveryInitialLocationEffect
 import com.eazpire.wear.discovery.GeoPoint
 import com.eazpire.wear.discovery.MapArtifactViewState
@@ -207,8 +210,12 @@ fun VaultScreen(api: WearPlayerApi, ownerId: String) {
 
 @Composable
 fun MoveScreen(api: WearPlayerApi) {
+    val context = LocalContext.current
     var steps by remember { mutableStateOf("—") }
     var eazToday by remember { mutableStateOf("—") }
+    var m2eWallet by remember { mutableStateOf<MoveToEarnWallet?>(null) }
+    var m2eConverting by remember { mutableStateOf(false) }
+    var m2eConvertMsg by remember { mutableStateOf<String?>(null) }
     var exploring by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var mapArtifacts by remember { mutableStateOf<List<MapArtifactProduct>>(emptyList()) }
@@ -244,6 +251,7 @@ fun MoveScreen(api: WearPlayerApi) {
                 val m = api.moveToEarnStatusModel()
                 steps = m.stepsToday.toString()
                 eazToday = m.eazEarnedToday.toString()
+                m2eWallet = m.wallet ?: runCatching { api.moveToEarnWalletModel() }.getOrNull()
                 val d = api.discoveryStatusModel()
                 val apiExploring = d.session != null
                 exploring = liveExploring || apiExploring
@@ -330,6 +338,30 @@ fun MoveScreen(api: WearPlayerApi) {
                 steps = displaySteps,
                 distanceKm = if (sessionDistanceM > 0) distanceKm else "0.00 km",
                 eazToday = eazToday,
+            )
+            MoveToEarnWalletCard(
+                wallet = m2eWallet,
+                converting = m2eConverting,
+                convertMessage = m2eConvertMsg,
+                onConvert = {
+                    val w = m2eWallet ?: return@MoveToEarnWalletCard
+                    val amount = w.balanceEazcAvailable
+                    if (amount < w.minConvertEaz) return@MoveToEarnWalletCard
+                    scope.launch {
+                        m2eConverting = true
+                        m2eConvertMsg = null
+                        runCatching {
+                            val r = api.moveToEarnConvertToShopCredit(amount, "wear_android")
+                            if (r.optBoolean("ok", false)) {
+                                m2eConvertMsg = context.getString(R.string.m2e_wallet_convert_success)
+                                load()
+                            } else {
+                                m2eConvertMsg = r.optString("error", r.optString("message", "Convert failed"))
+                            }
+                        }.onFailure { m2eConvertMsg = it.message }
+                        m2eConverting = false
+                    }
+                },
             )
             if (mapArtifactViews.isNotEmpty() && currentLocation != null) {
                 val statusArtifact = nearestInRange ?: mapArtifactViews.first()

@@ -12,10 +12,17 @@ data class FeedPost(
     val likeCount: Int = 0,
 )
 
+data class MoveToEarnWallet(
+    val balanceEazcAvailable: Double = 0.0,
+    val balanceEazcLocked: Double = 0.0,
+    val minConvertEaz: Double = 1.0,
+)
+
 data class MoveToEarnStatus(
     val stepsToday: Long = 0L,
     val eazEarnedToday: Long = 0L,
     val dailyClaimAvailable: Boolean = false,
+    val wallet: MoveToEarnWallet? = null,
 )
 
 data class WearEarnStatus(

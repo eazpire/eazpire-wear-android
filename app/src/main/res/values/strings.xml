@@ -28,6 +28,13 @@
     <string name="move_stat_distance">Distance</string>
     <string name="move_stat_cells">Cells</string>
     <string name="move_stat_eaz">EAZ</string>
+    <string name="m2e_wallet_title">Move to Earn Wallet</string>
+    <string name="m2e_wallet_available">Available EAZC: %1$.2f</string>
+    <string name="m2e_wallet_locked">Locked: %1$.2f</string>
+    <string name="m2e_wallet_convert_hint">Convert to Shop Credit here only.</string>
+    <string name="m2e_wallet_convert">Convert to Shop Credit</string>
+    <string name="m2e_wallet_converting">Converting…</string>
+    <string name="m2e_wallet_convert_success">Shop Credit added.</string>
     <string name="discovery_notification_title">World Discovery</string>
     <string name="discovery_consent_title">Location &amp; trail consent</string>
     <string name="discovery_consent_body">World Discovery uses GPS while you explore. We store map cells permanently and compressed trail batches for up to 90 days to prevent cheating. Steps and EAZ stay separate unless you sync them.</string>

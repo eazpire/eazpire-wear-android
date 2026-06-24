@@ -7,6 +7,7 @@ import com.eazpire.wear.core.model.MapArtifactProduct
 import com.eazpire.wear.core.model.BalanceSnapshot
 import com.eazpire.wear.core.model.FeedPost
 import com.eazpire.wear.core.model.MoveToEarnStatus
+import com.eazpire.wear.core.model.MoveToEarnWallet
 import com.eazpire.wear.core.model.MoveSession
 import com.eazpire.wear.core.model.DiscoveryStatus
 import com.eazpire.wear.core.model.NetworkMember
@@ -277,12 +278,45 @@ class WearPlayerApi(
 
     suspend fun moveToEarnStatusModel(): MoveToEarnStatus {
         val json = moveToEarnStatus()
+        val walletJson = json.optJSONObject("move_to_earn_wallet")
+        val wallet = walletJson?.let {
+            MoveToEarnWallet(
+                balanceEazcAvailable = it.optDouble("balance_eazc_available", 0.0),
+                balanceEazcLocked = it.optDouble("balance_eazc_locked", 0.0),
+                minConvertEaz = it.optDouble("min_convert_eaz", 1.0),
+            )
+        }
         return MoveToEarnStatus(
             stepsToday = json.optLong("steps_today", json.optLong("steps", 0L)),
             eazEarnedToday = json.optLong("eaz_earned_today", json.optLong("eaz_today", 0L)),
             dailyClaimAvailable = json.optBoolean("daily_claim_available", false),
+            wallet = wallet,
         )
     }
+
+    suspend fun moveToEarnWallet(): JSONObject = dispatch("move-to-earn-wallet")
+
+    suspend fun moveToEarnWalletModel(): MoveToEarnWallet {
+        val json = moveToEarnWallet()
+        val w = json.optJSONObject("wallet") ?: JSONObject()
+        return MoveToEarnWallet(
+            balanceEazcAvailable = w.optDouble("balance_eazc_available", 0.0),
+            balanceEazcLocked = w.optDouble("balance_eazc_locked", 0.0),
+            minConvertEaz = w.optDouble("min_convert_eaz", 1.0),
+        )
+    }
+
+    suspend fun moveToEarnConvertToShopCredit(
+        amountEaz: Double,
+        channel: String = "wear_android",
+    ): JSONObject =
+        dispatch(
+            "move-to-earn-convert-to-shop-credit",
+            method = "POST",
+            body = JSONObject()
+                .put("amount_eaz", amountEaz)
+                .put("channel", channel),
+        )
 
     suspend fun moveToEarnSyncSteps(stepsDelta: Long): JSONObject =
         dispatch(

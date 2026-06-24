@@ -32,6 +32,74 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.eazpire.wear.R
 import com.eazpire.wear.theme.EazWearColors
+import com.eazpire.wear.core.model.MoveToEarnWallet
+
+@Composable
+fun MoveToEarnWalletCard(
+    wallet: MoveToEarnWallet?,
+    converting: Boolean,
+    convertMessage: String?,
+    onConvert: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (wallet == null) return
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(EazWearColors.HubPanel.copy(alpha = 0.92f))
+            .border(1.dp, EazWearColors.HubCardBorder, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            stringResource(R.string.m2e_wallet_title),
+            color = EazWearColors.HubText,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            stringResource(
+                R.string.m2e_wallet_available,
+                wallet.balanceEazcAvailable,
+            ),
+            color = EazWearColors.HubText,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (wallet.balanceEazcLocked > 0) {
+            Text(
+                stringResource(R.string.m2e_wallet_locked, wallet.balanceEazcLocked),
+                color = EazWearColors.HubMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Text(
+            stringResource(R.string.m2e_wallet_convert_hint),
+            color = EazWearColors.HubMuted,
+            style = MaterialTheme.typography.labelSmall,
+        )
+        Button(
+            onClick = onConvert,
+            enabled = !converting && wallet.balanceEazcAvailable >= wallet.minConvertEaz,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = EazWearColors.HubOrange,
+                contentColor = EazWearColors.HubText,
+            ),
+        ) {
+            Text(
+                if (converting) {
+                    stringResource(R.string.m2e_wallet_converting)
+                } else {
+                    stringResource(R.string.m2e_wallet_convert)
+                },
+            )
+        }
+        convertMessage?.let {
+            Text(it, color = EazWearColors.HubMuted, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
 
 @Composable
 fun DiscoveryExploreStatsBar(
