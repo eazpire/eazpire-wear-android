@@ -424,6 +424,9 @@ private fun ArtifactWorldArScene(
     var modelRotationY by remember { mutableFloatStateOf(0f) }
     var isRotationDragging by remember { mutableStateOf(false) }
     var virtualLightOn by remember { mutableStateOf(false) }
+    /** Defer hiding AR planes — toggling [planeRenderer] off on the placement frame leaves stale
+     *  "Transparent Textured" plane textures bound and Filament aborts on commit. */
+    var showPlaneRenderer by remember { mutableStateOf(true) }
 
     val rotationTouchState = remember { ArtifactArRotationTouchState() }
     /** Imperative target — rotate a plain [SceneNode] wrapper; [ModelNode] scaleToUnits ignores Y spin. */
@@ -468,8 +471,20 @@ private fun ArtifactWorldArScene(
     val modelAssetPath = remember(artifact.modelUrl) { resolveArModelAssetPath(artifact.modelUrl) }
     val autoAnimate = remember(artifact.modelUrl) { resolveAutoAnimate(artifact.modelUrl) }
     val glbImportRotation = remember(modelAssetPath) { artifactGlbImportRotation(modelAssetPath) }
-    val glbInstance = rememberModelInstance(modelLoader, modelAssetPath)
+    val previewGlbInstance = rememberModelInstance(modelLoader, modelAssetPath)
+    val placedGlbInstance = rememberModelInstance(modelLoader, modelAssetPath)
     val isArtifactPlaced = placementAnchor != null
+
+    LaunchedEffect(isArtifactPlaced) {
+        if (isArtifactPlaced) {
+            // Let the preview node detach and the plane renderer finish its current frame first.
+            withFrameNanos { }
+            withFrameNanos { }
+            showPlaneRenderer = false
+        } else {
+            showPlaneRenderer = true
+        }
+    }
 
     fun detachPlacementAnchor() {
         placementAnchor?.detach()
@@ -541,7 +556,7 @@ private fun ArtifactWorldArScene(
                 modelLoader = modelLoader,
                 environment = environment,
                 mainLightNode = mainLightNode,
-                planeRenderer = !isArtifactPlaced,
+                planeRenderer = showPlaneRenderer,
                 lifecycle = arLifecycleOwner.lifecycle,
                 sessionConfiguration = { _, config ->
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
@@ -588,9 +603,9 @@ private fun ArtifactWorldArScene(
                 if (placementAnchor == null) {
                     previewAnchor?.let { preview ->
                         AnchorNode(anchor = preview) {
-                            if (glbInstance != null) {
+                            if (previewGlbInstance != null) {
                                 ModelNode(
-                                    modelInstance = glbInstance,
+                                    modelInstance = previewGlbInstance,
                                     autoAnimate = autoAnimate,
                                     scaleToUnits = 0.65f,
                                     rotation = glbImportRotation,
@@ -621,9 +636,9 @@ private fun ArtifactWorldArScene(
                                 rotation = Rotation(y = modelRotationY)
                             },
                         ) {
-                            if (glbInstance != null) {
+                            if (placedGlbInstance != null) {
                                 ModelNode(
-                                    modelInstance = glbInstance,
+                                    modelInstance = placedGlbInstance,
                                     autoAnimate = autoAnimate,
                                     scaleToUnits = 0.75f,
                                     rotation = glbImportRotation,
