@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,6 +33,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -39,6 +42,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -48,20 +52,30 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.eazpire.wear.R
+import com.eazpire.wear.core.model.MapArtifactDefaults
 import com.eazpire.wear.core.model.MapArtifactProduct
 import com.eazpire.wear.theme.EazWearColors
+import com.google.android.filament.utils.KTX1Loader
 import com.google.ar.core.Anchor
 import com.google.ar.core.ArCoreApk
+import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
 import com.google.ar.core.Session
+import io.github.sceneview.SurfaceType
 import io.github.sceneview.ar.ARScene
+import io.github.sceneview.ar.rememberAREnvironment
+import io.github.sceneview.createEnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironment
+import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.utils.readBuffer
 
 /**
  * SceneView resumes ARCore when its lifecycle observer is added. If the activity is already
@@ -126,6 +140,13 @@ private fun requestArCoreInstall(activity: Activity): ArCoreSupport =
             else -> ArCoreSupport.InstallFailed
         }
     }.getOrElse { ArCoreSupport.InstallFailed }
+
+/** Prefer bundled GLB assets in AR — remote URLs often load meshes without embedded textures. */
+private fun resolveArModelAssetPath(modelUrl: String?): String {
+    val trimmed = modelUrl?.trim().orEmpty()
+    if (trimmed.isNotBlank() && !trimmed.contains("://")) return trimmed
+    return MapArtifactDefaults.DEMO_GLB_ASSET
+}
 
 @Composable
 fun ArtifactArScreen(
@@ -302,6 +323,30 @@ private fun ArtifactWorldArScene(
 
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
+    val arEnvironment = remember(engine, context) {
+        runCatching {
+            val indirectLight = KTX1Loader.createIndirectLight(
+                engine,
+                context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
+            ).indirectLight
+            createEnvironment(
+                engine = engine,
+                isOpaque = true,
+                indirectLight = indirectLight,
+                skybox = null,
+            )
+        }.getOrNull()
+    }
+    val environment = if (arEnvironment != null) {
+        rememberEnvironment(environmentLoader) { arEnvironment }
+    } else {
+        rememberAREnvironment(engine)
+    }
+    val mainLightNode = rememberMainLightNode(engine) {
+        intensity = 120_000f
+    }
+
     var placementAnchor by remember { mutableStateOf<Anchor?>(null) }
     var previewAnchor by remember { mutableStateOf<Anchor?>(null) }
     var lastPreviewPose by remember { mutableStateOf<com.google.ar.core.Pose?>(null) }
@@ -310,10 +355,11 @@ private fun ArtifactWorldArScene(
     var hasValidSurface by remember { mutableStateOf(false) }
     var artworkBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var placementMode by remember { mutableStateOf(ArtifactArPlacementMode.Default) }
+    var modelRotationY by remember { mutableFloatStateOf(0f) }
 
-    val glbInstance = artifact.modelUrl?.let { url ->
-        rememberModelInstance(modelLoader, url)
-    }
+    val modelAssetPath = remember(artifact.modelUrl) { resolveArModelAssetPath(artifact.modelUrl) }
+    val glbInstance = rememberModelInstance(modelLoader, modelAssetPath)
+    val isArtifactPlaced = placementAnchor != null
 
     fun detachPlacementAnchor() {
         placementAnchor?.detach()
@@ -335,6 +381,7 @@ private fun ArtifactWorldArScene(
         detachPlacementAnchor()
         placementAnchor = hit.createAnchor()
         clearPreviewAnchor()
+        modelRotationY = 0f
     }
 
     fun enterSpecialPlacement() {
@@ -378,10 +425,16 @@ private fun ArtifactWorldArScene(
         if (!isClosing) {
             ARScene(
                 modifier = Modifier.fillMaxSize(),
+                surfaceType = SurfaceType.TextureSurface,
                 engine = engine,
                 modelLoader = modelLoader,
-                planeRenderer = true,
+                environment = environment,
+                mainLightNode = mainLightNode,
+                planeRenderer = !isArtifactPlaced,
                 lifecycle = arLifecycleOwner.lifecycle,
+                sessionConfiguration = { _, config ->
+                    config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+                },
                 onSessionFailed = {
                     if (!isClosing) arSessionFailed = true
                 },
@@ -441,6 +494,7 @@ private fun ArtifactWorldArScene(
                             ModelNode(
                                 modelInstance = glbInstance,
                                 scaleToUnits = 0.75f,
+                                rotation = Rotation(y = modelRotationY),
                             )
                         } else {
                             artworkBitmap?.let { bitmap ->
@@ -460,162 +514,166 @@ private fun ArtifactWorldArScene(
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = artifact.name,
-                style = MaterialTheme.typography.titleMedium,
-                color = EazWearColors.HubText,
-                fontWeight = FontWeight.SemiBold,
+        if (isArtifactPlaced) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(EazWearColors.HubPanel.copy(alpha = 0.85f))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                textAlign = TextAlign.Center,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            ArtifactArNavigationOverlay(
-                userLocation = userLocation,
-                artifactLocation = artifactLocation,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(EazWearColors.HubPanel.copy(alpha = 0.88f)),
-            )
-            if (placementMode == ArtifactArPlacementMode.SpecialManual) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.artifact_ar_special_banner),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazWearColors.HubOrange,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(EazWearColors.HubButtonCharcoal.copy(alpha = 0.92f))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
-            }
-            if (!hasValidSurface) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = when (placementMode) {
-                        ArtifactArPlacementMode.SpecialManual ->
-                            stringResource(R.string.artifact_ar_special_no_surface)
-                        ArtifactArPlacementMode.Default ->
-                            stringResource(R.string.artifact_ar_tracking_hint)
+                    .fillMaxSize()
+                    .zIndex(1f)
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures { change, dragAmount ->
+                            change.consume()
+                            modelRotationY -= dragAmount * 0.35f
+                        }
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazWearColors.HubText,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(EazWearColors.HubButtonCharcoal.copy(alpha = 0.88f))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
-            } else if (placementMode == ArtifactArPlacementMode.SpecialManual && placementAnchor == null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.artifact_ar_special_place_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazWearColors.HubText,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(EazWearColors.HubButtonCharcoal.copy(alpha = 0.88f))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
-            }
+            )
         }
 
-        ArtifactArPlacementHandOverlay(
-            hasValidSurface = hasValidSurface,
-            onPlaceTap = { tapX, tapY ->
-                placeArtifactAtScreenPoint(tapX, tapY)
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
+        if (!isArtifactPlaced) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(16.dp)
+                    .zIndex(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = artifact.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = EazWearColors.HubText,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(EazWearColors.HubPanel.copy(alpha = 0.85f))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                ArtifactArNavigationOverlay(
+                    userLocation = userLocation,
+                    artifactLocation = artifactLocation,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(EazWearColors.HubPanel.copy(alpha = 0.88f)),
+                )
+                if (placementMode == ArtifactArPlacementMode.SpecialManual) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.artifact_ar_special_banner),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = EazWearColors.HubOrange,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(EazWearColors.HubButtonCharcoal.copy(alpha = 0.92f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                if (!hasValidSurface) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = when (placementMode) {
+                            ArtifactArPlacementMode.SpecialManual ->
+                                stringResource(R.string.artifact_ar_special_no_surface)
+                            ArtifactArPlacementMode.Default ->
+                                stringResource(R.string.artifact_ar_tracking_hint)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = EazWearColors.HubText,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(EazWearColors.HubButtonCharcoal.copy(alpha = 0.88f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                } else if (placementMode == ArtifactArPlacementMode.SpecialManual) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.artifact_ar_special_place_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = EazWearColors.HubText,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(EazWearColors.HubButtonCharcoal.copy(alpha = 0.88f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
+
+            ArtifactArPlacementHandOverlay(
+                hasValidSurface = hasValidSurface,
+                onPlaceTap = { tapX, tapY ->
+                    placeArtifactAtScreenPoint(tapX, tapY)
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .padding(16.dp),
+                .padding(16.dp)
+                .zIndex(3f),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = if (placementAnchor == null) {
-                    stringResource(R.string.artifact_ar_place_hint)
-                } else {
-                    stringResource(R.string.artifact_ar_reposition_hint)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = EazWearColors.HubText,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(EazWearColors.HubPanel.copy(alpha = 0.75f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
-            if (placementMode == ArtifactArPlacementMode.Default && placementAnchor != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(
-                    onClick = { enterSpecialPlacement() },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        stringResource(R.string.artifact_ar_special_enter),
-                        color = EazWearColors.HubOrange,
-                        textAlign = TextAlign.Center,
-                    )
-                }
+            if (!isArtifactPlaced) {
                 Text(
-                    text = stringResource(R.string.artifact_ar_special_enter_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazWearColors.HubText,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                )
-            }
-            if (placementMode == ArtifactArPlacementMode.SpecialManual) {
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(
-                    onClick = { restoreDefaultPlacement() },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        stringResource(R.string.artifact_ar_special_cancel),
-                        color = EazWearColors.HubText,
-                    )
-                }
-            }
-            if (placementAnchor != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.artifact_ar_world_hint),
+                    text = stringResource(R.string.artifact_ar_place_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = EazWearColors.HubText,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(EazWearColors.HubPanel.copy(alpha = 0.65f))
+                        .background(EazWearColors.HubPanel.copy(alpha = 0.75f))
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                 )
+                if (placementMode == ArtifactArPlacementMode.Default && placementAnchor != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { enterSpecialPlacement() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            stringResource(R.string.artifact_ar_special_enter),
+                            color = EazWearColors.HubOrange,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.artifact_ar_special_enter_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = EazWearColors.HubText,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                    )
+                }
+                if (placementMode == ArtifactArPlacementMode.SpecialManual) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { restoreDefaultPlacement() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            stringResource(R.string.artifact_ar_special_cancel),
+                            color = EazWearColors.HubText,
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
             }
-            Spacer(modifier = Modifier.height(16.dp))
             TextButton(onClick = { requestClose() }, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
             }
