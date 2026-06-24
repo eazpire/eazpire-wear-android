@@ -18,9 +18,21 @@ class StepSyncHelper(private val context: Context) {
     suspend fun isAvailable(): Boolean =
         HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
 
-    suspend fun hasPermissions(): Boolean {
+    /** Installed and read permission granted — does not imply any provider writes data. */
+    suspend fun canUseHealthConnect(): Boolean {
+        if (!isAvailable()) return false
         val client = healthClient() ?: return false
         return client.permissionController.getGrantedPermissions().containsAll(permissions)
+    }
+
+    suspend fun hasPermissions(): Boolean = canUseHealthConnect()
+
+    /** True when HC has returned at least one step in the last 7 days (provider pipeline active). */
+    suspend fun hasRecentStepData(): Boolean {
+        if (!canUseHealthConnect()) return false
+        val zone = ZoneId.systemDefault()
+        val start = LocalDate.now(zone).minusDays(7).atStartOfDay(zone).toInstant()
+        return readStepsBetween(start, Instant.now()) > 0
     }
 
     fun permissionSet() = permissions
@@ -32,15 +44,18 @@ class StepSyncHelper(private val context: Context) {
     }
 
     suspend fun readStepsBetween(start: Instant, end: Instant): Long = withContext(Dispatchers.IO) {
+        if (!canUseHealthConnect()) return@withContext 0L
         val client = healthClient() ?: return@withContext 0L
         if (!end.isAfter(start)) return@withContext 0L
-        val response = client.readRecords(
-            ReadRecordsRequest(
-                recordType = StepsRecord::class,
-                timeRangeFilter = TimeRangeFilter.between(start, end),
+        runCatching {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = StepsRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                )
             )
-        )
-        response.records.sumOf { it.count }
+            response.records.sumOf { it.count }
+        }.getOrDefault(0L)
     }
 
     private suspend fun healthClient(): HealthConnectClient? {

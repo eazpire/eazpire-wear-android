@@ -28,7 +28,11 @@ fun DiscoveryInitialLocationEffect(enabled: Boolean) {
                 CancellationTokenSource().token,
             ).addOnSuccessListener { loc ->
                 if (loc != null && DiscoveryExploreState.currentLocation.value == null) {
-                    DiscoveryExploreState.addLocation(loc.latitude, loc.longitude)
+                    DiscoveryExploreState.addLocation(
+                        loc.latitude,
+                        loc.longitude,
+                        if (loc.hasAltitude()) loc.altitude else null,
+                    )
                 }
             }
         }

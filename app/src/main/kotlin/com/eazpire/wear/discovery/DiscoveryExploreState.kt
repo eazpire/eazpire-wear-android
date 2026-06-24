@@ -9,7 +9,12 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-data class GeoPoint(val lat: Double, val lng: Double)
+data class GeoPoint(
+    val lat: Double,
+    val lng: Double,
+    /** GPS altitude in meters above WGS84 ellipsoid, when available. */
+    val altitudeM: Double? = null,
+)
 
 /**
  * In-memory explore session state shared between [DiscoveryExploreService] and Move UI.
@@ -42,8 +47,8 @@ object DiscoveryExploreState {
         _paused.value = paused
     }
 
-    fun addLocation(lat: Double, lng: Double) {
-        val point = GeoPoint(lat, lng)
+    fun addLocation(lat: Double, lng: Double, altitudeM: Double? = null) {
+        val point = GeoPoint(lat, lng, altitudeM)
         val prev = _currentLocation.value
         if (prev != null) {
             _sessionDistanceM.value += haversineM(prev.lat, prev.lng, lat, lng)

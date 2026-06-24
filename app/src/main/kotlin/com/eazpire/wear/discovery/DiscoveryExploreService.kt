@@ -29,7 +29,7 @@ class DiscoveryExploreService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val trackBuffer = DiscoveryTrackBuffer(flushThreshold = 15)
-    private val stepTracker = ExploreStepTracker(this, scope)
+    private lateinit var stepTracker: ExploreStepTracker
     private var api: WearPlayerApi? = null
     private lateinit var fusedClient: FusedLocationProviderClient
     private var locationCallback: LocationCallback? = null
@@ -37,6 +37,7 @@ class DiscoveryExploreService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        stepTracker = ExploreStepTracker(this, scope)
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
     }
 
@@ -107,7 +108,11 @@ class DiscoveryExploreService : Service() {
                         loc.time,
                         loc.accuracy.toDouble(),
                     )
-                    DiscoveryExploreState.addLocation(loc.latitude, loc.longitude)
+                    DiscoveryExploreState.addLocation(
+                        loc.latitude,
+                        loc.longitude,
+                        if (loc.hasAltitude()) loc.altitude else null,
+                    )
                 }
                 if (trackBuffer.shouldFlush()) flushBuffer()
             }

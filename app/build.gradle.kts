@@ -14,12 +14,12 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.eazpire.wear"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.eazpire.wear"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toIntOrNull() ?: 1
         versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
     }
@@ -91,6 +91,10 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
+
+    val sceneViewVersion = "3.6.2"
+    implementation("io.github.sceneview:arsceneview:$sceneViewVersion")
+    implementation("com.google.ar:core:1.46.0")
 }
 
 tasks.register("checkReleaseSigning") {

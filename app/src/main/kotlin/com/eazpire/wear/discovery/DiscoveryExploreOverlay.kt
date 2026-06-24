@@ -37,7 +37,6 @@ import com.eazpire.wear.theme.EazWearColors
 fun DiscoveryExploreStatsBar(
     steps: String,
     distanceKm: String,
-    cells: String,
     eazToday: String,
     modifier: Modifier = Modifier,
 ) {
@@ -53,7 +52,6 @@ fun DiscoveryExploreStatsBar(
     ) {
         StatColumn(stringResource(R.string.move_stat_steps), steps)
         StatColumn(stringResource(R.string.move_stat_distance), distanceKm)
-        StatColumn(stringResource(R.string.move_stat_cells), cells)
         StatColumn(stringResource(R.string.move_stat_eaz), eazToday)
     }
 }

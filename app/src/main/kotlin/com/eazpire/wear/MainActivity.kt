@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -33,7 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -45,7 +48,6 @@ import com.eazpire.wear.auth.SessionProbeResult
 import com.eazpire.wear.auth.SessionResolver
 import com.eazpire.wear.core.api.WearPlayerApi
 import com.eazpire.wear.core.auth.SecureTokenStore
-import com.eazpire.wear.health.StepSyncHelper
 import com.eazpire.wear.sync.WearPlayerAuthSync
 import com.eazpire.wear.theme.EazWearColors
 import com.eazpire.wear.theme.EazWearScreenBackground
@@ -82,7 +84,8 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         splashScreen.setKeepOnScreenCondition { keepSplashOnScreen.get() }
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, true)
+        // API 35+: edge-to-edge default; insets via Compose root (systemBarsPadding) — same as Creator app.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setFormat(PixelFormat.RGBA_8888)
         window.decorView.setBackgroundColor(AndroidColor.parseColor("#FAFAFA"))
         window.statusBarColor = AndroidColor.parseColor("#FAFAFA")
@@ -97,14 +100,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             val oauthCallbackUri = oauthCallbackUriState.value
             EazWearTheme {
-                EazWearScreenBackground {
-                    WearApp(
-                        tokenStore = tokenStore,
-                        sessionHandoff = sessionHandoff,
-                        oauthCallbackUri = oauthCallbackUri,
-                        onContentReady = { keepSplashOnScreen.set(false) },
-                    )
-                }
+                WearApp(
+                    tokenStore = tokenStore,
+                    sessionHandoff = sessionHandoff,
+                    oauthCallbackUri = oauthCallbackUri,
+                    onContentReady = { keepSplashOnScreen.set(false) },
+                )
             }
         }
     }
@@ -135,7 +136,9 @@ private fun WearApp(
         activity?.window?.let { window ->
             val controller = WindowInsetsControllerCompat(window, window.decorView)
             when (screen) {
-                AppScreen.Auth -> {
+                AppScreen.Booting,
+                AppScreen.Auth,
+                -> {
                     window.statusBarColor = AndroidColor.parseColor("#07080D")
                     window.navigationBarColor = AndroidColor.parseColor("#05060A")
                     window.decorView.setBackgroundColor(AndroidColor.parseColor("#07080D"))
@@ -214,7 +217,8 @@ private fun WearApp(
 
     when (screen) {
         AppScreen.Booting -> WearBootSplashScreen(targetProgress = bootProgress)
-        AppScreen.Auth -> AuthScreen(
+        AppScreen.Auth -> EazWearScreenBackground {
+            AuthScreen(
             tokenStore = tokenStore,
             sessionHandoff = sessionHandoff,
             sessionProbeResult = sessionProbe,
@@ -223,23 +227,29 @@ private fun WearApp(
             onJoinWithQr = { screen = AppScreen.QrScan },
             oauthCallbackUri = oauthCallbackUri,
             autoJoinTrigger = autoJoinTrigger,
-        )
-        AppScreen.QrScan -> QrScanScreen(
+            )
+        }
+        AppScreen.QrScan -> EazWearScreenBackground {
+            QrScanScreen(
             onTokenScanned = { token ->
                 PendingQrClaimStore.save(context, token)
                 screen = AppScreen.Auth
                 autoJoinTrigger += 1
             },
             onCancel = { screen = AppScreen.Auth },
-        )
-        AppScreen.MintGate -> MintGateScreen(
+            )
+        }
+        AppScreen.MintGate -> EazWearScreenBackground {
+            MintGateScreen(
             onBack = {
                 scope.launch {
                     screen = if (tokenStore.isLoggedIn()) AppScreen.Main else AppScreen.Auth
                 }
             },
-        )
-        AppScreen.Main -> WearMainShell(
+            )
+        }
+        AppScreen.Main -> EazWearScreenBackground {
+            WearMainShell(
             tokenStore = tokenStore,
             onSignOut = {
                 tokenStore.clear()
@@ -247,7 +257,8 @@ private fun WearApp(
                 sessionProbe = SessionProbeResult.NoSession
                 screen = AppScreen.Auth
             },
-        )
+            )
+        }
     }
 }
 
@@ -259,11 +270,11 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
     val context = LocalContext.current
     val ownerId = tokenStore.getOwnerId().orEmpty()
     val api = remember(tokenStore.getJwt()) { WearPlayerApi(jwt = tokenStore.getJwt()) }
-    val stepSync = remember { StepSyncHelper(context) }
     val tabs = WearTab.entries
 
     Scaffold(
         containerColor = EazWearColors.Background,
+        contentWindowInsets = WindowInsets(0),
         topBar = {
             TextButton(onClick = onSignOut, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text(
@@ -318,18 +329,44 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
             }
         },
     ) { padding ->
+        val moveTabIndex = tabs.indexOf(WearTab.Move)
+        var moveTabMounted by remember { mutableStateOf(tab == moveTabIndex) }
+        LaunchedEffect(tab) {
+            if (tab == moveTabIndex) moveTabMounted = true
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            when (tabs[tab]) {
-                WearTab.Hub -> HubScreen(api, ownerId, context)
-                WearTab.Feed -> FeedScreen(api)
-                WearTab.Verify -> VerifyScreen(api, ownerId)
-                WearTab.Squad -> SquadScreen(api, ownerId)
-                WearTab.Vault -> VaultScreen(api, ownerId)
-                WearTab.Move -> MoveScreen(api, stepSync)
+            // Keep Move mounted after first visit so MapView is not recreated on every tab switch.
+            if (moveTabMounted) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(if (tab == moveTabIndex) 0f else -1f)
+                        .alpha(if (tab == moveTabIndex) 1f else 0f),
+                ) {
+                    MoveScreen(api)
+                }
+            }
+
+            if (tab != moveTabIndex) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(1f),
+                ) {
+                    when (tabs[tab]) {
+                        WearTab.Hub -> HubScreen(api, ownerId, context)
+                        WearTab.Feed -> FeedScreen(api)
+                        WearTab.Verify -> VerifyScreen(api, ownerId)
+                        WearTab.Squad -> SquadScreen(api, ownerId)
+                        WearTab.Vault -> VaultScreen(api, ownerId)
+                        WearTab.Move -> Unit
+                    }
+                }
             }
         }
     }

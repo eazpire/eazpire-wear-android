@@ -80,10 +80,14 @@ object MapArtifactDefaults {
      */
     const val DEMO_PRODUCT_ID = "fallback-demo-tee-1"
 
+    /** Bundled GLB for map preview + AR (assets folder, no network). */
+    const val DEMO_GLB_ASSET = "artifacts/demo-artifact.glb"
+
     fun demoFallback(): MapArtifactProduct = MapArtifactProduct(
         id = DEMO_PRODUCT_ID,
         name = "Neon Pulse Oversized Tee",
         imageUrl = "https://cdn.shopify.com/s/files/1/0739/5203/5098/files/3457070110335593502_2048.jpg?v=1765037188",
+        modelUrl = DEMO_GLB_ASSET,
         slotType = "upper_body",
     )
 }

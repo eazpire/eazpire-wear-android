@@ -158,12 +158,12 @@ class WearPlayerApi(
                 val o = arr.optJSONObject(i) ?: continue
                 val imageUrl = o.optString("artwork_url", "").trim()
                 if (imageUrl.isBlank()) continue
+                val remoteModelUrl = o.optString("model_url", o.optString("glb_url", "")).trim()
                 return MapArtifactProduct(
                     id = o.optString("id", o.optString("instance_id", "")),
                     name = o.optString("product_title", o.optString("name", "Artifact")),
                     imageUrl = imageUrl,
-                    modelUrl = o.optString("model_url", o.optString("glb_url", "")).trim()
-                        .ifBlank { null },
+                    modelUrl = remoteModelUrl.ifBlank { MapArtifactDefaults.DEMO_GLB_ASSET },
                     slotType = o.optString("slot_type", ""),
                 )
             }

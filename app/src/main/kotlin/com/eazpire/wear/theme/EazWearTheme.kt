@@ -3,6 +3,7 @@ package com.eazpire.wear.theme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -72,6 +73,7 @@ fun EazWearScreenBackground(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .systemBarsPadding()
             .background(MaterialTheme.colorScheme.background),
     ) {
         content()

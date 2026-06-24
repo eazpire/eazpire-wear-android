@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.eazpire.wear.core"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26

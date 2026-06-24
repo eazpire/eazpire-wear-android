@@ -6,6 +6,12 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
 
+fun createInvisibleMarkerDrawable(context: Context): BitmapDrawable {
+    val sizePx = 1
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    return BitmapDrawable(context.resources, bitmap)
+}
+
 fun createArtifactMarkerDrawable(context: Context, inRange: Boolean): BitmapDrawable {
     val sizePx = (48 * context.resources.displayMetrics.density).toInt().coerceAtLeast(64)
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
