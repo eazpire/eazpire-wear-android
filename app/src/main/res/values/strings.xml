@@ -18,8 +18,17 @@
     <string name="steps_today">Steps today</string>
     <string name="sync_steps">Sync steps</string>
     <string name="discovery_cells">Cells discovered</string>
-    <string name="discovery_start">Start Explore</string>
-    <string name="discovery_stop">Stop Explore</string>
+    <string name="discovery_start">Start</string>
+    <string name="discovery_stop">Stop</string>
+    <string name="discovery_pause">Pause</string>
+    <string name="discovery_resume">Resume</string>
+    <string name="discovery_paused_hint">Exploration paused — GPS updates stopped.</string>
+    <string name="discovery_notification_exploring">Exploring…</string>
+    <string name="discovery_notification_paused">Paused</string>
+    <string name="move_stat_steps">Steps</string>
+    <string name="move_stat_distance">Distance</string>
+    <string name="move_stat_cells">Cells</string>
+    <string name="move_stat_eaz">EAZ</string>
     <string name="discovery_notification_title">World Discovery</string>
     <string name="discovery_consent_title">Location &amp; trail consent</string>
     <string name="discovery_consent_body">World Discovery uses GPS while you explore. We store map cells permanently and compressed trail batches for up to 90 days to prevent cheating. Steps and EAZ stay separate unless you sync them.</string>
@@ -52,4 +61,11 @@
     <string name="play_review_email_label">Review email</string>
     <string name="play_review_code_label">Review code</string>
     <string name="play_review_submit">Continue</string>
+    <string name="artifact_map_in_range">%1$s nearby — tap the marker for AR</string>
+    <string name="artifact_map_out_of_range">%1$s on map — walk closer to interact</string>
+    <string name="artifact_map_tap_denied">Move closer to the artifact marker first.</string>
+    <string name="artifact_ar_close">Close AR view</string>
+    <string name="artifact_ar_overlay_hint">Point your camera at the scene — artifact preview overlay</string>
+    <string name="artifact_ar_fallback_hint">ARCore not installed — showing camera overlay preview instead of full 3D tracking.</string>
+    <string name="artifact_ar_camera_denied">Camera access is needed to view the artifact in AR.</string>
 </resources>

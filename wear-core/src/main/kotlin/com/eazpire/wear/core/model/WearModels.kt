@@ -63,3 +63,27 @@ data class DiscoverySyncResult(
     val cellsDuplicate: Int = 0,
     val cellsRejected: Int = 0,
 )
+
+/** Artifact shown on the Move discovery map (2D artwork; optional GLB when available). */
+data class MapArtifactProduct(
+    val id: String,
+    val name: String,
+    val imageUrl: String,
+    val modelUrl: String? = null,
+    val slotType: String = "",
+)
+
+object MapArtifactDefaults {
+    /**
+     * Neon Pulse Oversized Tee — real Shopify product from worker feedSeedDemo
+     * (FALLBACK_DEMO_PRODUCTS). Used when showcase/inventory API has no artwork yet.
+     */
+    const val DEMO_PRODUCT_ID = "fallback-demo-tee-1"
+
+    fun demoFallback(): MapArtifactProduct = MapArtifactProduct(
+        id = DEMO_PRODUCT_ID,
+        name = "Neon Pulse Oversized Tee",
+        imageUrl = "https://cdn.shopify.com/s/files/1/0739/5203/5098/files/3457070110335593502_2048.jpg?v=1765037188",
+        slotType = "upper_body",
+    )
+}

@@ -1,6 +1,8 @@
 package com.eazpire.wear.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,20 +10,41 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.eazpire.wear.discovery.ArtifactArScreen
+import com.eazpire.wear.discovery.DiscoveryExploreControlsRow
+import com.eazpire.wear.discovery.DiscoveryExploreMapView
+import com.eazpire.wear.discovery.DiscoveryExploreState
+import com.eazpire.wear.discovery.DiscoveryExploreStatsBar
+import com.eazpire.wear.discovery.DiscoveryInitialLocationEffect
+import com.eazpire.wear.discovery.GeoPoint
+import com.eazpire.wear.discovery.isWithinArtifactRange
+import com.eazpire.wear.discovery.offsetFromUser
+import com.eazpire.wear.discovery.MAP_ARTIFACT_OFFSET_EAST_M
+import com.eazpire.wear.discovery.MAP_ARTIFACT_OFFSET_NORTH_M
+import com.eazpire.wear.core.model.MapArtifactProduct
+import com.eazpire.wear.theme.EazWearColors
+import java.util.Locale
 import com.eazpire.wear.R
 import com.eazpire.wear.core.api.WearPlayerApi
 import com.eazpire.wear.sync.WearPlayerAuthSync
@@ -184,26 +207,63 @@ fun VaultScreen(api: WearPlayerApi, ownerId: String) {
 
 @Composable
 fun MoveScreen(api: WearPlayerApi, stepSync: com.eazpire.wear.health.StepSyncHelper) {
-    var status by remember { mutableStateOf("—") }
     var steps by remember { mutableStateOf("—") }
     var discoveryCells by remember { mutableStateOf("—") }
+    var eazToday by remember { mutableStateOf("—") }
     var exploring by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var syncing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var mapArtifact by remember { mutableStateOf<MapArtifactProduct?>(null) }
+    var artifactAnchor by remember { mutableStateOf<GeoPoint?>(null) }
+    var showAr by remember { mutableStateOf(false) }
+    var artifactHint by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    val liveExploring by DiscoveryExploreState.exploring.collectAsState()
+    val paused by DiscoveryExploreState.paused.collectAsState()
+    val currentLocation by DiscoveryExploreState.currentLocation.collectAsState()
+    val trackPoints by DiscoveryExploreState.trackPoints.collectAsState()
+    val sessionDistanceM by DiscoveryExploreState.sessionDistanceM.collectAsState()
+    val sessionSteps by DiscoveryExploreState.sessionSteps.collectAsState()
+
+    val artifactLocation = remember(currentLocation, artifactAnchor) {
+        artifactAnchor ?: currentLocation?.let {
+            offsetFromUser(it.lat, it.lng, MAP_ARTIFACT_OFFSET_NORTH_M, MAP_ARTIFACT_OFFSET_EAST_M)
+        }
+    }
+
+    LaunchedEffect(currentLocation, artifactAnchor) {
+        val user = currentLocation ?: return@LaunchedEffect
+        if (artifactAnchor == null) {
+            artifactAnchor = offsetFromUser(
+                user.lat,
+                user.lng,
+                MAP_ARTIFACT_OFFSET_NORTH_M,
+                MAP_ARTIFACT_OFFSET_EAST_M,
+            )
+        }
+    }
+
+    val artifactInRange = isWithinArtifactRange(currentLocation, artifactLocation)
 
     fun load() {
         scope.launch {
-            loading = true
             error = null
             runCatching {
                 val m = api.moveToEarnStatusModel()
-                status = "EAZ today: ${m.eazEarnedToday} · claim: ${m.dailyClaimAvailable}"
                 steps = m.stepsToday.toString()
+                eazToday = m.eazEarnedToday.toString()
                 val d = api.discoveryStatusModel()
                 discoveryCells = d.totalCellsDiscovered.toString()
-                exploring = d.session != null
+                val apiExploring = d.session != null
+                exploring = liveExploring || apiExploring
+                if (apiExploring && !liveExploring) {
+                    DiscoveryExploreState.markExploring(true)
+                }
+                if (mapArtifact == null) {
+                    mapArtifact = api.resolveMapArtifactProduct()
+                }
             }.onFailure { error = it.message }
             loading = false
         }
@@ -211,42 +271,127 @@ fun MoveScreen(api: WearPlayerApi, stepSync: com.eazpire.wear.health.StepSyncHel
 
     LaunchedEffect(Unit) { load() }
 
-    when {
-        loading -> WearLoading()
-        error != null -> WearError(error!!) { load() }
-        else -> Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+    DiscoveryInitialLocationEffect(enabled = !exploring)
+
+    LaunchedEffect(liveExploring) {
+        exploring = liveExploring || exploring
+    }
+
+    LaunchedEffect(exploring) {
+        while (exploring) {
+            kotlinx.coroutines.delay(30_000)
+            load()
+        }
+    }
+
+    val distanceKm = String.format(Locale.US, "%.2f km", sessionDistanceM / 1000.0)
+    val displaySteps = if (liveExploring) sessionSteps.toString() else steps
+    val artifact = mapArtifact
+
+    if (showAr && artifact != null) {
+        ArtifactArScreen(
+            artifact = artifact,
+            onClose = { showAr = false },
+        )
+        return
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        DiscoveryExploreMapView(
+            currentLocation = currentLocation,
+            trackPoints = trackPoints,
+            artifactLocation = artifactLocation,
+            artifactInRange = artifactInRange,
+            artifactName = artifact?.name.orEmpty(),
+            onArtifactClick = { showAr = true },
+            onArtifactOutOfRangeClick = {
+                artifactHint = "too_far"
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            WearStatCard(stringResource(R.string.steps_today), steps)
-            WearStatCard(stringResource(R.string.discovery_cells), discoveryCells)
-            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            com.eazpire.wear.discovery.DiscoveryExploreControls(exploring = exploring) { active ->
-                exploring = active
-                if (!active) load()
-            }
-            if (exploring) {
-                Text(
-                    stringResource(R.string.discovery_exploring_active),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyMedium,
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DiscoveryExploreStatsBar(
+                    steps = displaySteps,
+                    distanceKm = if (sessionDistanceM > 0) distanceKm else "0.00 km",
+                    cells = discoveryCells,
+                    eazToday = eazToday,
                 )
-            }
-            Button(
-                onClick = {
-                    scope.launch {
-                        syncing = true
-                        runCatching {
-                            val local = stepSync.readStepsToday()
-                            api.moveToEarnSyncSteps(local)
-                            load()
-                        }.onFailure { error = it.message }
-                        syncing = false
+                if (artifact != null && currentLocation != null) {
+                    Text(
+                        text = when {
+                            artifactInRange -> stringResource(R.string.artifact_map_in_range, artifact.name)
+                            else -> stringResource(R.string.artifact_map_out_of_range, artifact.name)
+                        },
+                        color = if (artifactInRange) EazWearColors.HubOrange else EazWearColors.HubMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = if (artifactInRange) FontWeight.SemiBold else FontWeight.Normal,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(EazWearColors.HubPanel.copy(alpha = 0.9f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                if (artifactHint == "too_far") {
+                    Text(
+                        stringResource(R.string.artifact_map_tap_denied),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                        color = EazWearColors.HubOrange,
+                    )
+                }
+                if (error != null) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(error!!, color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = { load() }) {
+                            Text(stringResource(R.string.retry))
+                        }
                     }
-                },
-                enabled = !syncing,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (syncing) stringResource(R.string.loading) else stringResource(R.string.sync_steps)) }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DiscoveryExploreControlsRow(
+                    exploring = exploring,
+                    paused = paused,
+                    onExploreChange = { active ->
+                        exploring = active
+                        if (!active) load()
+                    },
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            syncing = true
+                            runCatching {
+                                val local = stepSync.readStepsToday()
+                                api.moveToEarnSyncSteps(local)
+                                load()
+                            }.onFailure { err -> error = err.message }
+                            syncing = false
+                        }
+                    },
+                    enabled = !syncing,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (syncing) stringResource(R.string.loading) else stringResource(R.string.sync_steps))
+                }
+            }
         }
     }
 }

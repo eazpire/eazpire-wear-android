@@ -29,9 +29,11 @@ class DiscoveryExploreService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val trackBuffer = DiscoveryTrackBuffer(flushThreshold = 15)
+    private val stepTracker = ExploreStepTracker(this, scope)
     private var api: WearPlayerApi? = null
     private lateinit var fusedClient: FusedLocationProviderClient
     private var locationCallback: LocationCallback? = null
+    private var paused = false
 
     override fun onCreate() {
         super.onCreate()
@@ -44,33 +46,60 @@ class DiscoveryExploreService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 flushBuffer()
+                stepTracker.stop()
+                DiscoveryExploreState.markExploring(false)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
+            }
+            ACTION_PAUSE -> {
+                paused = true
+                stopLocationUpdates()
+                stepTracker.pause()
+                DiscoveryExploreState.markPaused(true)
+                updateNotification(getString(R.string.discovery_notification_paused))
+                return START_STICKY
+            }
+            ACTION_RESUME -> {
+                paused = false
+                DiscoveryExploreState.markPaused(false)
+                updateNotification(getString(R.string.discovery_notification_exploring))
+                stepTracker.resume()
+                startLocationUpdates()
+                return START_STICKY
             }
         }
 
         val jwt = SecureTokenStore.get(this).getJwt()
         api = WearPlayerApi(jwt = jwt)
+        stepTracker.attachApi(api)
+        paused = false
 
         createChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Exploring…"))
+        DiscoveryExploreState.markExploring(true)
+        DiscoveryExploreState.markPaused(false)
+        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.discovery_notification_exploring)))
 
         scope.launch {
             runCatching { api?.moveSessionStart() }
         }
 
+        stepTracker.start()
         startLocationUpdates()
         return START_STICKY
     }
 
     private fun startLocationUpdates() {
+        if (paused) return
+        stopLocationUpdates()
+
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10_000L)
             .setMinUpdateDistanceMeters(10f)
             .build()
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
+                if (paused) return
                 for (loc in result.locations) {
                     trackBuffer.add(
                         loc.latitude,
@@ -78,6 +107,7 @@ class DiscoveryExploreService : Service() {
                         loc.time,
                         loc.accuracy.toDouble(),
                     )
+                    DiscoveryExploreState.addLocation(loc.latitude, loc.longitude)
                 }
                 if (trackBuffer.shouldFlush()) flushBuffer()
             }
@@ -90,8 +120,16 @@ class DiscoveryExploreService : Service() {
                 Looper.getMainLooper(),
             )
         } catch (_: SecurityException) {
+            DiscoveryExploreState.markExploring(false)
             stopSelf()
         }
+    }
+
+    private fun stopLocationUpdates() {
+        if (::fusedClient.isInitialized) {
+            locationCallback?.let { fusedClient.removeLocationUpdates(it) }
+        }
+        locationCallback = null
     }
 
     private fun flushBuffer() {
@@ -105,14 +143,19 @@ class DiscoveryExploreService : Service() {
     }
 
     override fun onDestroy() {
-        if (::fusedClient.isInitialized) {
-            locationCallback?.let { fusedClient.removeLocationUpdates(it) }
-        }
+        stopLocationUpdates()
         flushBuffer()
+        stepTracker.stop()
+        DiscoveryExploreState.markExploring(false)
         scope.launch {
             runCatching { api?.moveSessionEnd() }
         }
         super.onDestroy()
+    }
+
+    private fun updateNotification(text: String) {
+        val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        mgr.notify(NOTIFICATION_ID, buildNotification(text))
     }
 
     private fun createChannel() {
@@ -141,6 +184,8 @@ class DiscoveryExploreService : Service() {
         const val CHANNEL_ID = "discovery_explore"
         const val NOTIFICATION_ID = 7701
         const val ACTION_STOP = "com.eazpire.wear.discovery.STOP"
+        const val ACTION_PAUSE = "com.eazpire.wear.discovery.PAUSE"
+        const val ACTION_RESUME = "com.eazpire.wear.discovery.RESUME"
 
         fun start(context: Context) {
             val i = Intent(context, DiscoveryExploreService::class.java)
@@ -149,6 +194,16 @@ class DiscoveryExploreService : Service() {
 
         fun stop(context: Context) {
             val i = Intent(context, DiscoveryExploreService::class.java).setAction(ACTION_STOP)
+            context.startService(i)
+        }
+
+        fun pause(context: Context) {
+            val i = Intent(context, DiscoveryExploreService::class.java).setAction(ACTION_PAUSE)
+            context.startService(i)
+        }
+
+        fun resume(context: Context) {
+            val i = Intent(context, DiscoveryExploreService::class.java).setAction(ACTION_RESUME)
             context.startService(i)
         }
     }

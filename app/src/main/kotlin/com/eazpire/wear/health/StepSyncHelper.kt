@@ -25,11 +25,15 @@ class StepSyncHelper(private val context: Context) {
 
     fun permissionSet() = permissions
 
-    suspend fun readStepsToday(): Long = withContext(Dispatchers.IO) {
-        val client = healthClient() ?: return@withContext 0L
+    suspend fun readStepsToday(): Long {
         val zone = ZoneId.systemDefault()
         val start = LocalDate.now(zone).atStartOfDay(zone).toInstant()
-        val end = Instant.now()
+        return readStepsBetween(start, Instant.now())
+    }
+
+    suspend fun readStepsBetween(start: Instant, end: Instant): Long = withContext(Dispatchers.IO) {
+        val client = healthClient() ?: return@withContext 0L
+        if (!end.isAfter(start)) return@withContext 0L
         val response = client.readRecords(
             ReadRecordsRequest(
                 recordType = StepsRecord::class,

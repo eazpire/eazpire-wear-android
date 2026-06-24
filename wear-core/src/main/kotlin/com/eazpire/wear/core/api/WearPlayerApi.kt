@@ -2,6 +2,8 @@ package com.eazpire.wear.core.api
 
 import com.eazpire.wear.core.auth.AuthConfig
 import com.eazpire.wear.core.model.ArtifactItem
+import com.eazpire.wear.core.model.MapArtifactDefaults
+import com.eazpire.wear.core.model.MapArtifactProduct
 import com.eazpire.wear.core.model.BalanceSnapshot
 import com.eazpire.wear.core.model.FeedPost
 import com.eazpire.wear.core.model.MoveToEarnStatus
@@ -146,6 +148,28 @@ class WearPlayerApi(
 
     suspend fun artifactsShowcaseRecent(limit: Int = 24): JSONObject =
         dispatch("artifacts-showcase-recent", query = mapOf("limit" to limit.toString()))
+
+    /** First showcase item with artwork, else static demo shop product. */
+    suspend fun resolveMapArtifactProduct(limit: Int = 8): MapArtifactProduct {
+        runCatching {
+            val json = artifactsShowcaseRecent(limit)
+            val arr = json.optJSONArray("items") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val imageUrl = o.optString("artwork_url", "").trim()
+                if (imageUrl.isBlank()) continue
+                return MapArtifactProduct(
+                    id = o.optString("id", o.optString("instance_id", "")),
+                    name = o.optString("product_title", o.optString("name", "Artifact")),
+                    imageUrl = imageUrl,
+                    modelUrl = o.optString("model_url", o.optString("glb_url", "")).trim()
+                        .ifBlank { null },
+                    slotType = o.optString("slot_type", ""),
+                )
+            }
+        }
+        return MapArtifactDefaults.demoFallback()
+    }
 
     suspend fun parseArtifacts(json: JSONObject): List<ArtifactItem> {
         val arr = json.optJSONArray("items") ?: json.optJSONArray("artifacts") ?: JSONArray()
