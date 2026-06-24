@@ -47,7 +47,6 @@ internal class MapTransparentSceneRenderer(
         this.displayHelper = DisplayHelper(context)
 
         textureView.isOpaque = isOpaque
-        textureView.setBackgroundColor(Color.TRANSPARENT)
         uiHelper.isOpaque = isOpaque
 
         uiHelper.renderCallback = makeRendererCallback(viewHeight = { textureView.height })

@@ -11,7 +11,8 @@
 
     <style name="Theme.EazpireWear.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/wear_boot_bg</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/wear_boot_splash_icon</item>
+        <!-- No system splash logo — only dark flash; WearBootSplashScreen shows the web-matching logo once. -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/wear_boot_splash_icon_transparent</item>
         <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
         <item name="postSplashScreenTheme">@style/Theme.EazpireWear</item>
     </style>

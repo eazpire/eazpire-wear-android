@@ -168,13 +168,11 @@ internal fun TransparentMapSceneView(
         factory = { ctx ->
             TextureView(ctx).also { tv ->
                 tv.isOpaque = false
-                tv.setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 sceneRenderer.attachToTextureView(tv, isOpaque = false, ctx, display, touchDispatcher)
             }
         },
         update = { tv ->
             tv.isOpaque = false
-            tv.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         },
     )
 
