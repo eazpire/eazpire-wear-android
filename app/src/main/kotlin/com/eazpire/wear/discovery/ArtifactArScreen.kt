@@ -414,6 +414,8 @@ private fun ArtifactWorldArScene(
     }
 
     var placementAnchor by remember { mutableStateOf<Anchor?>(null) }
+    /** Anchor created on tap but not mounted until plane textures have settled (Filament crash). */
+    var stagedPlacementAnchor by remember { mutableStateOf<Anchor?>(null) }
     var previewAnchor by remember { mutableStateOf<Anchor?>(null) }
     var lastPreviewPose by remember { mutableStateOf<com.google.ar.core.Pose?>(null) }
     var lastPlaneHit by remember { mutableStateOf<HitResult?>(null) }
@@ -424,9 +426,10 @@ private fun ArtifactWorldArScene(
     var modelRotationY by remember { mutableFloatStateOf(0f) }
     var isRotationDragging by remember { mutableStateOf(false) }
     var virtualLightOn by remember { mutableStateOf(false) }
-    /** Defer hiding AR planes — toggling [planeRenderer] off on the placement frame leaves stale
-     *  "Transparent Textured" plane textures bound and Filament aborts on commit. */
+    /** Keep plane overlay until staged placement finishes — abrupt disable leaves stale
+     *  "Transparent Textured" textures bound and Filament aborts on commit. */
     var showPlaneRenderer by remember { mutableStateOf(true) }
+    val isPlacementTransition = stagedPlacementAnchor != null
 
     val rotationTouchState = remember { ArtifactArRotationTouchState() }
     /** Imperative target — rotate a plain [SceneNode] wrapper; [ModelNode] scaleToUnits ignores Y spin. */
@@ -475,21 +478,17 @@ private fun ArtifactWorldArScene(
     val placedGlbInstance = rememberModelInstance(modelLoader, modelAssetPath)
     val isArtifactPlaced = placementAnchor != null
 
-    LaunchedEffect(isArtifactPlaced) {
-        if (isArtifactPlaced) {
-            // Let the preview node detach and the plane renderer finish its current frame first.
-            withFrameNanos { }
-            withFrameNanos { }
-            showPlaneRenderer = false
-        } else {
-            showPlaneRenderer = true
-        }
+    fun cancelStagedPlacement() {
+        stagedPlacementAnchor?.detach()
+        stagedPlacementAnchor = null
     }
 
     fun detachPlacementAnchor() {
+        cancelStagedPlacement()
         placementAnchor?.detach()
         placementAnchor = null
         placedModelNodeRef.set(null)
+        showPlaneRenderer = true
     }
 
     fun clearPreviewAnchor() {
@@ -499,15 +498,32 @@ private fun ArtifactWorldArScene(
     }
 
     fun placeArtifactAtScreenPoint(screenX: Float, screenY: Float) {
+        if (isPlacementTransition || placementAnchor != null) return
         val frame = latestFrame ?: return
         val hit = findArtifactPlaneHitAtScreenPoint(frame, screenX, screenY)
             ?.takeIf { it.isValidPlaneHit() }
             ?: lastPlaneHit?.takeIf { it.isValidPlaneHit() }
             ?: return
-        detachPlacementAnchor()
-        placementAnchor = hit.createAnchor()
+        Log.d(ARTIFACT_AR_LOG_TAG, "place tap — staging anchor (preview detach first)")
         clearPreviewAnchor()
+        stagedPlacementAnchor = hit.createAnchor()
+    }
+
+    LaunchedEffect(stagedPlacementAnchor) {
+        val staged = stagedPlacementAnchor ?: return@LaunchedEffect
+        // 1) Let preview ModelNode leave the Filament scene.
+        repeat(3) { withFrameNanos { } }
+        // 2) Hide plane overlay before mounting the placed model (textures must unbind cleanly).
+        showPlaneRenderer = false
+        repeat(4) { withFrameNanos { } }
+        if (stagedPlacementAnchor !== staged) {
+            staged.detach()
+            return@LaunchedEffect
+        }
+        Log.d(ARTIFACT_AR_LOG_TAG, "staged anchor ready — mounting placed model")
         modelRotationY = 0f
+        placementAnchor = staged
+        stagedPlacementAnchor = null
     }
 
     fun enterSpecialPlacement() {
@@ -526,6 +542,7 @@ private fun ArtifactWorldArScene(
         if (isClosing) return
         isClosing = true
         clearPreviewAnchor()
+        cancelStagedPlacement()
         detachPlacementAnchor()
         arLifecycleOwner.destroy()
     }
@@ -533,6 +550,7 @@ private fun ArtifactWorldArScene(
     DisposableEffect(Unit) {
         onDispose {
             clearPreviewAnchor()
+            cancelStagedPlacement()
             detachPlacementAnchor()
         }
     }
@@ -586,27 +604,31 @@ private fun ArtifactWorldArScene(
                     hasValidSurface = planeHit != null
                     lastPlaneHit = planeHit
 
-                    if (placementAnchor == null && planeHit != null) {
+                    if (
+                        placementAnchor == null &&
+                        !isPlacementTransition &&
+                        planeHit != null
+                    ) {
                         val hitPose = planeHit.hitPose
                         if (shouldUpdatePreviewAnchor(lastPreviewPose, hitPose)) {
                             previewAnchor?.detach()
                             previewAnchor = planeHit.createAnchor()
                             lastPreviewPose = hitPose
                         }
-                    } else if (placementAnchor != null) {
+                    } else if (placementAnchor != null || isPlacementTransition) {
                         clearPreviewAnchor()
                     } else {
                         clearPreviewAnchor()
                     }
                 },
             ) {
-                if (placementAnchor == null) {
+                if (placementAnchor == null && !isPlacementTransition) {
                     previewAnchor?.let { preview ->
                         AnchorNode(anchor = preview) {
                             if (previewGlbInstance != null) {
                                 ModelNode(
                                     modelInstance = previewGlbInstance,
-                                    autoAnimate = autoAnimate,
+                                    autoAnimate = false,
                                     scaleToUnits = 0.65f,
                                     rotation = glbImportRotation,
                                 )
@@ -729,7 +751,21 @@ private fun ArtifactWorldArScene(
             }
         }
 
-        if (!isArtifactPlaced) {
+        if (isPlacementTransition) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(2f),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    color = EazWearColors.HubOrange,
+                    modifier = Modifier.size(40.dp),
+                )
+            }
+        }
+
+        if (!isArtifactPlaced && !isPlacementTransition) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
