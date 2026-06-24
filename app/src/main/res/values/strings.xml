@@ -63,6 +63,7 @@
     <string name="artifact_map_in_range">%1$s nearby — tap the 3D marker for AR</string>
     <string name="artifact_map_out_of_range">%1$s on map — walk closer to interact</string>
     <string name="artifact_map_tap_denied">Move closer to the artifact marker first.</string>
+    <string name="artifact_ar_loading_model">Loading 3D model…</string>
     <string name="artifact_ar_close">Close AR view</string>
     <string name="artifact_ar_world_hint">Walk around the artifact — it stays fixed in the world.</string>
     <string name="artifact_ar_tracking_hint">Move your phone slowly to detect surfaces…</string>
