@@ -6,10 +6,10 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.util.Log
 import android.view.MotionEvent
+import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,7 +44,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -55,6 +54,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -90,6 +90,9 @@ import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.utils.readBuffer
+import io.github.sceneview.node.ModelNode as SceneModelNode
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * SceneView resumes ARCore when its lifecycle observer is added. If the activity is already
@@ -158,8 +161,48 @@ private fun requestArCoreInstall(activity: Activity): ArCoreSupport =
 private const val ARTIFACT_AR_DEFAULT_MAIN_LIGHT = 120_000f
 private const val ARTIFACT_AR_BOOSTED_MAIN_LIGHT = 380_000f
 private const val ARTIFACT_AR_POINT_LIGHT_INTENSITY = 650_000f
-private const val ARTIFACT_AR_ROTATION_SENSITIVITY = 0.35f
+private const val ARTIFACT_AR_ROTATION_SENSITIVITY = 0.72f
 private const val ARTIFACT_AR_LOG_TAG = "ArtifactAr"
+/** Bottom chrome (light + close) stays outside the rotation touch overlay. */
+private val ARTIFACT_AR_ROTATION_OVERLAY_BOTTOM_INSET = 108.dp
+
+/**
+ * Mutable touch state read from Android [View] listeners.
+ * ARScene wires [touchDispatcher] only once in [AndroidView.factory], so lambdas that close over
+ * Compose state go stale — this holder is updated via [SideEffect] instead.
+ */
+private class ArtifactArRotationTouchState {
+    val isPlaced = AtomicBoolean(false)
+    private val dragStartX = AtomicReference(Float.NaN)
+    var onRotateDelta: (Float) -> Unit = {}
+
+    fun handleTouch(event: MotionEvent): Boolean {
+        if (!isPlaced.get()) return false
+        return when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dragStartX.set(event.x)
+                Log.d(ARTIFACT_AR_LOG_TAG, "rotation overlay DOWN x=${event.x}")
+                true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val startX = dragStartX.get()
+                if (!startX.isNaN()) {
+                    val deltaX = event.x - startX
+                    onRotateDelta(deltaX)
+                    dragStartX.set(event.x)
+                    Log.d(ARTIFACT_AR_LOG_TAG, "rotation overlay MOVE delta=$deltaX")
+                }
+                true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                dragStartX.set(Float.NaN)
+                Log.d(ARTIFACT_AR_LOG_TAG, "rotation overlay UP/CANCEL")
+                true
+            }
+            else -> false
+        }
+    }
+}
 
 /** Prefer bundled GLB assets in AR — remote URLs often load meshes without embedded textures. */
 private fun resolveArModelAssetPath(modelUrl: String?): String {
@@ -376,8 +419,37 @@ private fun ArtifactWorldArScene(
     var artworkBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var placementMode by remember { mutableStateOf(ArtifactArPlacementMode.Default) }
     var modelRotationY by remember { mutableFloatStateOf(0f) }
-    var rotationDragStartX by remember { mutableFloatStateOf(Float.NaN) }
+    var isRotationDragging by remember { mutableStateOf(false) }
     var virtualLightOn by remember { mutableStateOf(false) }
+
+    val rotationTouchState = remember { ArtifactArRotationTouchState() }
+    /** Imperative target — declarative [ModelNode] rotation can lag behind touch-driven updates. */
+    val placedModelNodeRef = remember { AtomicReference<SceneModelNode?>(null) }
+
+    fun applyPlacedModelRotationY(yDegrees: Float) {
+        val node = placedModelNodeRef.get() ?: return
+        node.rotation = Rotation(y = yDegrees)
+        Log.d(
+            ARTIFACT_AR_LOG_TAG,
+            "placed model rotationY=${yDegrees.toInt()} node=${node.rotation.y.toInt()}",
+        )
+    }
+
+    SideEffect {
+        rotationTouchState.isPlaced.set(placementAnchor != null)
+        rotationTouchState.onRotateDelta = { delta ->
+            modelRotationY -= delta * ARTIFACT_AR_ROTATION_SENSITIVITY
+            applyPlacedModelRotationY(modelRotationY)
+        }
+    }
+
+    SideEffect {
+        if (placementAnchor != null) {
+            applyPlacedModelRotationY(modelRotationY)
+        } else {
+            placedModelNodeRef.set(null)
+        }
+    }
 
     SideEffect {
         mainLightNode.intensity =
@@ -393,6 +465,7 @@ private fun ArtifactWorldArScene(
     fun detachPlacementAnchor() {
         placementAnchor?.detach()
         placementAnchor = null
+        placedModelNodeRef.set(null)
     }
 
     fun clearPreviewAnchor() {
@@ -465,32 +538,15 @@ private fun ArtifactWorldArScene(
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 },
                 onTouchEvent = { event, _ ->
-                    if (!isArtifactPlaced) return@ARScene false
+                    // Backup path: same atomic state as the overlay (ARScene touchDispatcher is stale).
+                    val handled = rotationTouchState.handleTouch(event)
                     when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> {
-                            rotationDragStartX = event.x
-                            Log.d(ARTIFACT_AR_LOG_TAG, "rotation drag start x=${event.x}")
-                            true
-                        }
-                        MotionEvent.ACTION_MOVE -> {
-                            val startX = rotationDragStartX
-                            if (!startX.isNaN()) {
-                                val deltaX = event.x - startX
-                                modelRotationY -= deltaX * ARTIFACT_AR_ROTATION_SENSITIVITY
-                                rotationDragStartX = event.x
-                                Log.d(
-                                    ARTIFACT_AR_LOG_TAG,
-                                    "rotation drag delta=$deltaX y=$modelRotationY",
-                                )
-                            }
-                            true
-                        }
-                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            rotationDragStartX = Float.NaN
-                            true
-                        }
-                        else -> false
+                        MotionEvent.ACTION_DOWN ->
+                            if (handled) isRotationDragging = true
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                            isRotationDragging = false
                     }
+                    handled
                 },
                 onSessionFailed = {
                     if (!isClosing) arSessionFailed = true
@@ -526,6 +582,7 @@ private fun ArtifactWorldArScene(
                             if (glbInstance != null) {
                                 ModelNode(
                                     modelInstance = glbInstance,
+                                    autoAnimate = false,
                                     scaleToUnits = 0.65f,
                                 )
                             } else {
@@ -550,8 +607,13 @@ private fun ArtifactWorldArScene(
                         if (glbInstance != null) {
                             ModelNode(
                                 modelInstance = glbInstance,
+                                autoAnimate = false,
                                 scaleToUnits = 0.75f,
                                 rotation = Rotation(y = modelRotationY),
+                                apply = {
+                                    placedModelNodeRef.set(this)
+                                    rotation = Rotation(y = modelRotationY)
+                                },
                             )
                         } else {
                             artworkBitmap?.let { bitmap ->
@@ -592,23 +654,50 @@ private fun ArtifactWorldArScene(
         }
 
         if (isArtifactPlaced) {
-            // Backup layer for Compose hit-testing; primary rotation is handled in ARScene.onTouchEvent
-            // because the embedded TextureView consumes touches before Compose siblings.
-            Box(
+            // Transparent native overlay above AR TextureView — Compose siblings never receive touches.
+            AndroidView(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(2f)
-                    .pointerInput(isArtifactPlaced) {
-                        detectHorizontalDragGestures(
-                            onDragStart = { rotationDragStartX = it.x },
-                            onDragEnd = { rotationDragStartX = Float.NaN },
-                            onDragCancel = { rotationDragStartX = Float.NaN },
-                        ) { change, dragAmount ->
-                            change.consume()
-                            modelRotationY -= dragAmount * ARTIFACT_AR_ROTATION_SENSITIVITY
+                    .padding(bottom = ARTIFACT_AR_ROTATION_OVERLAY_BOTTOM_INSET)
+                    .zIndex(10f),
+                factory = { ctx ->
+                    View(ctx).apply {
+                        isClickable = true
+                        isFocusable = false
+                    }
+                },
+                update = { view ->
+                    view.setOnTouchListener { _, event ->
+                        val handled = rotationTouchState.handleTouch(event)
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN ->
+                                if (handled) isRotationDragging = true
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                                isRotationDragging = false
                         }
-                    },
+                        handled
+                    }
+                },
             )
+
+            if (isRotationDragging) {
+                Text(
+                    text = stringResource(
+                        R.string.artifact_ar_rotation_debug,
+                        modelRotationY.toInt(),
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = EazWearColors.HubOrange,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 12.dp)
+                        .zIndex(11f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EazWearColors.HubButtonCharcoal.copy(alpha = 0.9f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
         }
 
         if (!isArtifactPlaced) {

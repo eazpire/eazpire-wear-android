@@ -10,23 +10,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import android.graphics.Color
-import android.graphics.Point
-import androidx.compose.foundation.layout.offset
+import android.view.View
+import android.widget.FrameLayout
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import kotlin.math.roundToInt
 import org.osmdroid.config.Configuration
-import org.osmdroid.events.MapListener
-import org.osmdroid.events.ScrollEvent
-import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint as OsmGeoPoint
 import org.osmdroid.views.MapView
@@ -49,7 +45,9 @@ fun DiscoveryExploreMapView(
     val context = LocalContext.current
     val density = LocalDensity.current
     val previewSizeDp = 56.dp
-    val previewHalfPx = with(density) { (previewSizeDp / 2).roundToPx() }
+    val previewSizePx = with(density) { previewSizeDp.roundToPx() }
+    val previewHalfPx = previewSizePx / 2
+    val mapReferenceZoom = 16.0
     val lifecycleOwner = LocalLifecycleOwner.current
     val compassReading = rememberDeviceCompassReading()
     val orientationFilter = remember { SmoothAzimuthFilter() }
@@ -63,11 +61,17 @@ fun DiscoveryExploreMapView(
     }
 
     var mapView by remember { mutableStateOf<MapView?>(null) }
+    var glbPreviewHost by remember { mutableStateOf<MapGlbPreviewHost?>(null) }
     var trackOverlay by remember { mutableStateOf<Polyline?>(null) }
     var userMarkerOverlay by remember { mutableStateOf<Marker?>(null) }
     var artifactMarkerOverlay by remember { mutableStateOf<Marker?>(null) }
-    var artifactMarkerScreenPx by remember { mutableStateOf<Offset?>(null) }
     val showGlbPreview = !artifactModelUrl.isNullOrBlank()
+
+    val latestArtifact by rememberUpdatedState(artifactLocation)
+    val latestShowGlbPreview by rememberUpdatedState(showGlbPreview)
+    val latestInRange by rememberUpdatedState(artifactInRange)
+    val latestOnArtifactClick by rememberUpdatedState(onArtifactClick)
+    val latestOnOutOfRangeClick by rememberUpdatedState(onArtifactOutOfRangeClick)
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -81,50 +85,6 @@ fun DiscoveryExploreMapView(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             mapView?.onDetach()
-        }
-    }
-
-    val latestArtifact by rememberUpdatedState(artifactLocation)
-    val latestShowGlbPreview by rememberUpdatedState(showGlbPreview)
-
-    fun updateArtifactScreenPosition(map: MapView) {
-        val artifact = latestArtifact
-        if (!latestShowGlbPreview || artifact == null) {
-            artifactMarkerScreenPx = null
-            return
-        }
-        val point = Point()
-        map.projection.toPixels(OsmGeoPoint(artifact.lat, artifact.lng), point)
-        artifactMarkerScreenPx = Offset(point.x.toFloat(), point.y.toFloat())
-    }
-
-    DisposableEffect(mapView, showGlbPreview) {
-        val map = mapView
-        if (map == null) return@DisposableEffect onDispose {}
-
-        val mapListener = object : MapListener {
-            override fun onScroll(event: ScrollEvent?): Boolean {
-                updateArtifactScreenPosition(map)
-                return false
-            }
-
-            override fun onZoom(event: ZoomEvent?): Boolean {
-                updateArtifactScreenPosition(map)
-                return false
-            }
-        }
-        map.addMapListener(mapListener)
-
-        val layoutListener =
-            android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                updateArtifactScreenPosition(map)
-            }
-        map.addOnLayoutChangeListener(layoutListener)
-        updateArtifactScreenPosition(map)
-
-        onDispose {
-            map.removeMapListener(mapListener)
-            map.removeOnLayoutChangeListener(layoutListener)
         }
     }
 
@@ -163,27 +123,21 @@ fun DiscoveryExploreMapView(
 
         artifactMarkerOverlay?.let { map.overlays.remove(it) }
         val artifact = artifactLocation
-        if (artifact != null) {
+        if (artifact != null && !showGlbPreview) {
             val marker = Marker(map).apply {
                 position = OsmGeoPoint(artifact.lat, artifact.lng)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                 title = artifactName
                 snippet = if (artifactInRange) "" else "too_far"
-                icon = if (showGlbPreview) {
-                    createInvisibleMarkerDrawable(context)
-                } else {
-                    createArtifactMarkerDrawable(context, artifactInRange)
-                }
+                icon = createArtifactMarkerDrawable(context, artifactInRange)
                 isDraggable = false
-                if (!showGlbPreview) {
-                    setOnMarkerClickListener { _, _ ->
-                        if (artifactInRange) {
-                            onArtifactClick()
-                        } else {
-                            onArtifactOutOfRangeClick()
-                        }
-                        true
+                setOnMarkerClickListener { _, _ ->
+                    if (artifactInRange) {
+                        onArtifactClick()
+                    } else {
+                        onArtifactOutOfRangeClick()
                     }
+                    true
                 }
             }
             artifactMarkerOverlay = marker
@@ -193,7 +147,6 @@ fun DiscoveryExploreMapView(
         }
 
         map.invalidate()
-        updateArtifactScreenPosition(map)
     }
 
     LaunchedEffect(mapView) {
@@ -204,7 +157,7 @@ fun DiscoveryExploreMapView(
                     orientationFilter.reset()
                     if (map.mapOrientation != 0f) {
                         map.mapOrientation = 0f
-                        updateArtifactScreenPosition(map)
+                        map.invalidate()
                     }
                 }
                 else -> if (reading.isReliable) {
@@ -213,55 +166,92 @@ fun DiscoveryExploreMapView(
                     )
                     if (map.mapOrientation != orientation) {
                         map.mapOrientation = orientation
-                        updateArtifactScreenPosition(map)
+                        map.invalidate()
                     }
                 }
                 // Unreliable tilt: keep last map orientation (Google Maps style).
             }
-            if (latestShowGlbPreview) {
-                updateArtifactScreenPosition(map)
-            }
             kotlinx.coroutines.delay(50L)
         }
+    }
+
+    LaunchedEffect(glbPreviewHost, showGlbPreview, artifactModelUrl, artifactInRange) {
+        val host = glbPreviewHost ?: return@LaunchedEffect
+        val modelUrl = artifactModelUrl
+        if (!showGlbPreview || modelUrl.isNullOrBlank()) {
+            host.previewView.visibility = View.GONE
+            host.mapView.invalidate()
+            return@LaunchedEffect
+        }
+        host.previewView.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
+        )
+        host.previewView.setContent {
+            ArtifactMapModelPreview(
+                modelUrl = modelUrl,
+                inRange = artifactInRange,
+                onClick = onArtifactClick,
+                onOutOfRangeClick = onArtifactOutOfRangeClick,
+                size = previewSizeDp,
+            )
+        }
+        host.mapView.invalidate()
     }
 
     Box(modifier = modifier) {
         AndroidView(
             modifier = Modifier.matchParentSize(),
             factory = { ctx ->
-                MapView(ctx).apply {
-                    setBackgroundColor(Color.parseColor("#E8EEF2"))
-                    setTileSource(TileSourceFactory.MAPNIK)
-                    setMultiTouchControls(true)
-                    controller.setZoom(16.0)
-                    mapView = this
+                FrameLayout(ctx).apply {
+                    val map = MapView(ctx).apply {
+                        setBackgroundColor(Color.parseColor("#E8EEF2"))
+                        setTileSource(TileSourceFactory.MAPNIK)
+                        setMultiTouchControls(true)
+                        controller.setZoom(mapReferenceZoom)
+                    }
+                    addView(
+                        map,
+                        FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                        ),
+                    )
+
+                    val composeView = ComposeView(ctx).apply {
+                        visibility = View.GONE
+                        layoutParams = FrameLayout.LayoutParams(previewSizePx, previewSizePx)
+                        isClickable = false
+                        isFocusable = false
+                        setOnTouchListener { _, event ->
+                            map.dispatchTouchEvent(event)
+                            true
+                        }
+                    }
+                    addView(composeView)
+
+                    val overlay = ArtifactGlbMapOverlay(
+                        previewView = composeView,
+                        baseHalfSizePx = previewHalfPx,
+                        referenceZoom = mapReferenceZoom,
+                        geoPointProvider = { latestArtifact },
+                        enabledProvider = { latestShowGlbPreview },
+                        inRangeProvider = { latestInRange },
+                        onInRangeClick = { latestOnArtifactClick() },
+                        onOutOfRangeClick = { latestOnOutOfRangeClick() },
+                    )
+                    map.overlays.add(overlay)
+
+                    mapView = map
+                    glbPreviewHost = MapGlbPreviewHost(map, composeView, overlay)
                 }
             },
-            update = { map ->
-                mapView = map
+            update = { _ ->
                 val loc = currentLocation
-                if (loc != null && trackPoints.isEmpty()) {
+                val map = mapView
+                if (loc != null && trackPoints.isEmpty() && map != null) {
                     map.controller.setCenter(OsmGeoPoint(loc.lat, loc.lng))
                 }
             },
         )
-
-        val markerScreen = artifactMarkerScreenPx
-        if (showGlbPreview && markerScreen != null) {
-            ArtifactMapModelPreview(
-                modelUrl = artifactModelUrl!!,
-                inRange = artifactInRange,
-                onClick = onArtifactClick,
-                onOutOfRangeClick = onArtifactOutOfRangeClick,
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            (markerScreen.x - previewHalfPx).roundToInt(),
-                            (markerScreen.y - previewHalfPx).roundToInt(),
-                        )
-                    },
-                size = previewSizeDp,
-            )
-        }
     }
 }

@@ -53,7 +53,10 @@ internal class MapTransparentSceneRenderer(
         uiHelper.attachTo(textureView)
 
         onTouch?.let { dispatch ->
-            textureView.setOnTouchListener { _, event -> dispatch(event); true }
+            textureView.setOnTouchListener { _, event ->
+                dispatch(event)
+                false
+            }
         }
     }
 
@@ -79,7 +82,10 @@ internal class MapTransparentSceneRenderer(
         uiHelper.attachTo(surfaceView)
 
         onTouch?.let { dispatch ->
-            surfaceView.setOnTouchListener { _, event -> dispatch(event); true }
+            surfaceView.setOnTouchListener { _, event ->
+                dispatch(event)
+                false
+            }
         }
     }
 

@@ -1,6 +1,5 @@
 package com.eazpire.wear.discovery
 
-import android.view.MotionEvent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -138,12 +137,8 @@ fun ArtifactMapModelPreview(
                 mainLightNode = mainLightNode,
                 cameraNode = cameraNode,
                 collisionSystem = collisionSystem,
-                onTouchEvent = { event, _ ->
-                    if (event.action == MotionEvent.ACTION_UP) {
-                        if (inRange) onClick() else onOutOfRangeClick()
-                    }
-                    true
-                },
+                // Taps are handled by [ArtifactGlbMapOverlay.onSingleTapConfirmed]; never consume here.
+                onTouchEvent = { _, _ -> false },
             ) {
                 ModelNode(
                     modelInstance = modelInstance,
