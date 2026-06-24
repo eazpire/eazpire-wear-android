@@ -14,6 +14,8 @@ import java.util.concurrent.TimeUnit
 
 object BrandAssetSlots {
     const val WEAR_LOGO = "wear_logo"
+    /** Square fav / launcher mark (admin slot eaz_app_favicon). */
+    const val EAZ_APP_FAVICON = "eaz_app_favicon"
 }
 
 class BrandAssetsRepository(

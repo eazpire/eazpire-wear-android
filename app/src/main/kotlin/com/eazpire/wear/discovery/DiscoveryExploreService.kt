@@ -12,6 +12,7 @@ import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.eazpire.wear.MainActivity
 import com.eazpire.wear.R
+import com.eazpire.wear.brand.WearNotificationIcon
 import com.eazpire.wear.core.api.WearPlayerApi
 import com.eazpire.wear.core.auth.SecureTokenStore
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -39,6 +40,7 @@ class DiscoveryExploreService : Service() {
         super.onCreate()
         stepTracker = ExploreStepTracker(this, scope)
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
+        scope.launch { WearNotificationIcon.warmFromAdmin(this@DiscoveryExploreService) }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -179,7 +181,7 @@ class DiscoveryExploreService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.discovery_notification_title))
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(WearNotificationIcon.smallIconRes())
             .setContentIntent(pending)
             .setOngoing(true)
             .build()

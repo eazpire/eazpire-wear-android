@@ -48,6 +48,7 @@ import com.eazpire.wear.auth.SessionProbeResult
 import com.eazpire.wear.auth.SessionResolver
 import com.eazpire.wear.core.api.WearPlayerApi
 import com.eazpire.wear.core.auth.SecureTokenStore
+import com.eazpire.wear.core.brand.BrandAssetsRepository
 import com.eazpire.wear.sync.WearPlayerAuthSync
 import com.eazpire.wear.theme.EazWearColors
 import com.eazpire.wear.theme.EazWearScreenBackground
@@ -135,6 +136,7 @@ private fun WearApp(
 
     // Release Android 12 system splash immediately so WearBootSplashScreen (web-matching) is visible.
     LaunchedEffect(Unit) {
+        BrandAssetsRepository.get(context).refreshIfStale()
         onContentReady()
     }
 
