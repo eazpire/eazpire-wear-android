@@ -39,6 +39,9 @@ import io.github.sceneview.rememberView
 import io.github.sceneview.utils.readBuffer
 import kotlinx.coroutines.isActive
 
+/** glTF Y-up meshes import flat in SceneView; −90° on X stands them upright on map/AR planes. */
+internal val ArtifactGlbImportRotation = Rotation(x = -90f)
+
 /** Small auto-rotating GLB preview for the discovery map (no AR session). */
 @Composable
 fun ArtifactMapModelPreview(
@@ -137,13 +140,17 @@ fun ArtifactMapModelPreview(
                 mainLightNode = mainLightNode,
                 cameraNode = cameraNode,
                 collisionSystem = collisionSystem,
-                // Taps are handled by [ArtifactGlbMapOverlay.onSingleTapConfirmed]; never consume here.
+                // Taps: preview forwards touches to MapView → [ArtifactGlbTapOverlay] / transparent marker.
                 onTouchEvent = { _, _ -> false },
             ) {
                 ModelNode(
                     modelInstance = modelInstance,
                     scaleToUnits = 0.55f,
-                    rotation = Rotation(y = rotationY),
+                    rotation = Rotation(
+                        x = ArtifactGlbImportRotation.x,
+                        y = rotationY,
+                        z = ArtifactGlbImportRotation.z,
+                    ),
                 )
             }
         }

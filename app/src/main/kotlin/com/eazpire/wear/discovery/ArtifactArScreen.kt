@@ -588,6 +588,7 @@ private fun ArtifactWorldArScene(
                                     modelInstance = glbInstance,
                                     autoAnimate = false,
                                     scaleToUnits = 0.65f,
+                                    rotation = ArtifactGlbImportRotation,
                                 )
                             } else {
                                 artworkBitmap?.let { bitmap ->
@@ -620,6 +621,7 @@ private fun ArtifactWorldArScene(
                                     modelInstance = glbInstance,
                                     autoAnimate = false,
                                     scaleToUnits = 0.75f,
+                                    rotation = ArtifactGlbImportRotation,
                                 )
                             } else {
                                 artworkBitmap?.let { bitmap ->

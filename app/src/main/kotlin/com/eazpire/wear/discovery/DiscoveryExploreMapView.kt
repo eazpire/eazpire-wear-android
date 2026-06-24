@@ -89,6 +89,8 @@ fun DiscoveryExploreMapView(
         map.layoutGlbPreviewAt(host.previewView, geo, sizePx)
         map.syncGlbTapMarker(host.tapMarker, geo, sizePx, context)
         host.tapMarker.isEnabled = true
+        map.overlays.remove(host.tapOverlay)
+        map.overlays.add(host.tapOverlay)
         host.previewView.visibility = View.VISIBLE
         map.invalidate()
     }
@@ -168,10 +170,15 @@ fun DiscoveryExploreMapView(
 
         glbPreviewHost?.let { host ->
             if (showGlbPreview) {
+                if (!map.overlays.contains(host.tapOverlay)) {
+                    map.overlays.add(host.tapOverlay)
+                }
                 if (!map.overlays.contains(host.tapMarker)) {
                     map.overlays.add(host.tapMarker)
                 }
+                map.bringGlbTapMarkerToFront(host.tapMarker)
             } else {
+                map.overlays.remove(host.tapOverlay)
                 map.overlays.remove(host.tapMarker)
             }
         }
@@ -276,10 +283,29 @@ fun DiscoveryExploreMapView(
                         ),
                     )
 
+                    val tapOverlay = ArtifactGlbTapOverlay(
+                        geoPointProvider = { latestArtifact },
+                        enabledProvider = { latestShowGlbPreview },
+                        sizePxProvider = {
+                            scaledGlbPreviewSizePx(
+                                previewSizePx,
+                                map.zoomLevelDouble,
+                                mapReferenceZoom,
+                            )
+                        },
+                        inRangeProvider = { latestInRange },
+                        onInRangeClick = { latestOnArtifactClick() },
+                        onOutOfRangeClick = { latestOnOutOfRangeClick() },
+                    )
                     val composeView = ComposeView(ctx).apply {
                         visibility = View.GONE
                         isClickable = false
                         isFocusable = false
+                        // Preview sits above tiles; forward so overlay tap + marker click run on MapView.
+                        setOnTouchListener { _, event ->
+                            map.dispatchTouchEvent(event)
+                            true
+                        }
                     }
                     val tapMarker = Marker(map).apply {
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
@@ -308,7 +334,7 @@ fun DiscoveryExploreMapView(
                     )
 
                     mapView = map
-                    glbPreviewHost = MapGlbPreviewHost(map, composeView, tapMarker)
+                    glbPreviewHost = MapGlbPreviewHost(map, composeView, tapMarker, tapOverlay)
                 }
             },
             update = { _ ->
