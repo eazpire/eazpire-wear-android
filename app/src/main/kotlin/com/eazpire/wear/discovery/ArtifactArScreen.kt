@@ -90,7 +90,7 @@ import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.utils.readBuffer
-import io.github.sceneview.node.ModelNode as SceneModelNode
+import io.github.sceneview.node.Node as SceneNode
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -423,15 +423,19 @@ private fun ArtifactWorldArScene(
     var virtualLightOn by remember { mutableStateOf(false) }
 
     val rotationTouchState = remember { ArtifactArRotationTouchState() }
-    /** Imperative target — declarative [ModelNode] rotation can lag behind touch-driven updates. */
-    val placedModelNodeRef = remember { AtomicReference<SceneModelNode?>(null) }
+    /** Imperative target — rotate a plain [SceneNode] wrapper; [ModelNode] scaleToUnits ignores Y spin. */
+    val placedModelNodeRef = remember { AtomicReference<SceneNode?>(null) }
 
     fun applyPlacedModelRotationY(yDegrees: Float) {
-        val node = placedModelNodeRef.get() ?: return
+        val node = placedModelNodeRef.get()
+        if (node == null) {
+            Log.w(ARTIFACT_AR_LOG_TAG, "applyPlacedModelRotationY: node ref is null (y=$yDegrees)")
+            return
+        }
         node.rotation = Rotation(y = yDegrees)
         Log.d(
             ARTIFACT_AR_LOG_TAG,
-            "placed model rotationY=${yDegrees.toInt()} node=${node.rotation.y.toInt()}",
+            "placed model rotationY=${yDegrees.toInt()} node=${node.rotation.y.toInt()} ref=${node.hashCode()}",
         )
     }
 
@@ -604,27 +608,30 @@ private fun ArtifactWorldArScene(
 
                 placementAnchor?.let { worldAnchor ->
                     AnchorNode(anchor = worldAnchor) {
-                        if (glbInstance != null) {
-                            ModelNode(
-                                modelInstance = glbInstance,
-                                autoAnimate = false,
-                                scaleToUnits = 0.75f,
-                                rotation = Rotation(y = modelRotationY),
-                                apply = {
-                                    placedModelNodeRef.set(this)
-                                    rotation = Rotation(y = modelRotationY)
-                                },
-                            )
-                        } else {
-                            artworkBitmap?.let { bitmap ->
-                                Node(
-                                    position = Position(y = ARTIFACT_AR_PLACEMENT_HEIGHT_M),
-                                    rotation = Rotation(x = -90f, y = modelRotationY),
-                                ) {
-                                    ImageNode(
-                                        bitmap = bitmap,
-                                        size = Size(x = 0.75f, y = 0.75f),
-                                    )
+                        Node(
+                            rotation = Rotation(y = modelRotationY),
+                            apply = {
+                                placedModelNodeRef.set(this)
+                                rotation = Rotation(y = modelRotationY)
+                            },
+                        ) {
+                            if (glbInstance != null) {
+                                ModelNode(
+                                    modelInstance = glbInstance,
+                                    autoAnimate = false,
+                                    scaleToUnits = 0.75f,
+                                )
+                            } else {
+                                artworkBitmap?.let { bitmap ->
+                                    Node(
+                                        position = Position(y = ARTIFACT_AR_PLACEMENT_HEIGHT_M),
+                                        rotation = Rotation(x = -90f),
+                                    ) {
+                                        ImageNode(
+                                            bitmap = bitmap,
+                                            size = Size(x = 0.75f, y = 0.75f),
+                                        )
+                                    }
                                 }
                             }
                         }

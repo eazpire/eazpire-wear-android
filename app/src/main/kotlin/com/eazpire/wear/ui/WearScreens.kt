@@ -221,16 +221,14 @@ fun MoveScreen(api: WearPlayerApi) {
     val sessionDistanceM by DiscoveryExploreState.sessionDistanceM.collectAsState()
     val sessionSteps by DiscoveryExploreState.sessionSteps.collectAsState()
 
-    val artifactLocation = remember(currentLocation, artifactAnchor) {
-        artifactAnchor ?: currentLocation?.let { placeArtifactNearUser(it.lat, it.lng, it.altitudeM) }
-    }
-
-    LaunchedEffect(currentLocation, artifactAnchor) {
+    LaunchedEffect(currentLocation) {
         val user = currentLocation ?: return@LaunchedEffect
         if (artifactAnchor == null) {
             artifactAnchor = placeArtifactNearUser(user.lat, user.lng, user.altitudeM)
         }
     }
+
+    val artifactLocation = artifactAnchor
 
     val artifactInRange = isWithinArtifactRange(currentLocation, artifactLocation)
 

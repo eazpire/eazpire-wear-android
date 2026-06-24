@@ -12,6 +12,13 @@ fun createInvisibleMarkerDrawable(context: Context): BitmapDrawable {
     return BitmapDrawable(context.resources, bitmap)
 }
 
+/** Transparent icon sized for map hit-testing over the GLB preview. */
+fun createTransparentHitDrawable(context: Context, sizePx: Int): BitmapDrawable {
+    val safeSize = sizePx.coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(safeSize, safeSize, Bitmap.Config.ARGB_8888)
+    return BitmapDrawable(context.resources, bitmap)
+}
+
 fun createArtifactMarkerDrawable(context: Context, inRange: Boolean): BitmapDrawable {
     val sizePx = (48 * context.resources.displayMetrics.density).toInt().coerceAtLeast(64)
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)

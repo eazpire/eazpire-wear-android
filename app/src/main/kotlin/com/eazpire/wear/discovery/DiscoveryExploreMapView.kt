@@ -23,6 +23,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint as OsmGeoPoint
 import org.osmdroid.views.MapView
@@ -46,7 +49,6 @@ fun DiscoveryExploreMapView(
     val density = LocalDensity.current
     val previewSizeDp = 56.dp
     val previewSizePx = with(density) { previewSizeDp.roundToPx() }
-    val previewHalfPx = previewSizePx / 2
     val mapReferenceZoom = 16.0
     val lifecycleOwner = LocalLifecycleOwner.current
     val compassReading = rememberDeviceCompassReading()
@@ -72,6 +74,24 @@ fun DiscoveryExploreMapView(
     val latestInRange by rememberUpdatedState(artifactInRange)
     val latestOnArtifactClick by rememberUpdatedState(onArtifactClick)
     val latestOnOutOfRangeClick by rememberUpdatedState(onArtifactOutOfRangeClick)
+
+    fun syncGlbPreviewLayout() {
+        val host = glbPreviewHost ?: return
+        val map = host.mapView
+        val geo = latestArtifact
+        if (!latestShowGlbPreview || geo == null) {
+            host.previewView.visibility = View.GONE
+            host.tapMarker.isEnabled = false
+            map.invalidate()
+            return
+        }
+        val sizePx = scaledGlbPreviewSizePx(previewSizePx, map.zoomLevelDouble, mapReferenceZoom)
+        map.layoutGlbPreviewAt(host.previewView, geo, sizePx)
+        map.syncGlbTapMarker(host.tapMarker, geo, sizePx, context)
+        host.tapMarker.isEnabled = true
+        host.previewView.visibility = View.VISIBLE
+        map.invalidate()
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -146,7 +166,17 @@ fun DiscoveryExploreMapView(
             artifactMarkerOverlay = null
         }
 
-        map.invalidate()
+        glbPreviewHost?.let { host ->
+            if (showGlbPreview) {
+                if (!map.overlays.contains(host.tapMarker)) {
+                    map.overlays.add(host.tapMarker)
+                }
+            } else {
+                map.overlays.remove(host.tapMarker)
+            }
+        }
+
+        syncGlbPreviewLayout()
     }
 
     LaunchedEffect(mapView) {
@@ -157,6 +187,7 @@ fun DiscoveryExploreMapView(
                     orientationFilter.reset()
                     if (map.mapOrientation != 0f) {
                         map.mapOrientation = 0f
+                        glbPreviewHost?.previewView?.rotation = 0f
                         map.invalidate()
                     }
                 }
@@ -166,6 +197,7 @@ fun DiscoveryExploreMapView(
                     )
                     if (map.mapOrientation != orientation) {
                         map.mapOrientation = orientation
+                        glbPreviewHost?.previewView?.rotation = orientation
                         map.invalidate()
                     }
                 }
@@ -175,11 +207,12 @@ fun DiscoveryExploreMapView(
         }
     }
 
-    LaunchedEffect(glbPreviewHost, showGlbPreview, artifactModelUrl, artifactInRange) {
+    LaunchedEffect(glbPreviewHost, showGlbPreview, artifactModelUrl, artifactInRange, artifactLocation) {
         val host = glbPreviewHost ?: return@LaunchedEffect
         val modelUrl = artifactModelUrl
         if (!showGlbPreview || modelUrl.isNullOrBlank()) {
             host.previewView.visibility = View.GONE
+            host.tapMarker.isEnabled = false
             host.mapView.invalidate()
             return@LaunchedEffect
         }
@@ -195,7 +228,7 @@ fun DiscoveryExploreMapView(
                 size = previewSizeDp,
             )
         }
-        host.mapView.invalidate()
+        syncGlbPreviewLayout()
     }
 
     Box(modifier = modifier) {
@@ -208,6 +241,32 @@ fun DiscoveryExploreMapView(
                         setTileSource(TileSourceFactory.MAPNIK)
                         setMultiTouchControls(true)
                         controller.setZoom(mapReferenceZoom)
+                        addMapListener(
+                            object : MapListener {
+                                override fun onScroll(event: ScrollEvent?): Boolean {
+                                    glbPreviewHost?.previewView?.rotation = mapOrientation
+                                    invalidate()
+                                    return false
+                                }
+
+                                override fun onZoom(event: ZoomEvent?): Boolean {
+                                    glbPreviewHost?.let { host ->
+                                        val geo = latestArtifact
+                                        if (latestShowGlbPreview && geo != null) {
+                                            val sizePx = scaledGlbPreviewSizePx(
+                                                previewSizePx,
+                                                zoomLevelDouble,
+                                                mapReferenceZoom,
+                                            )
+                                            layoutGlbPreviewAt(host.previewView, geo, sizePx)
+                                            syncGlbTapMarker(host.tapMarker, geo, sizePx, ctx)
+                                        }
+                                    }
+                                    invalidate()
+                                    return false
+                                }
+                            },
+                        )
                     }
                     addView(
                         map,
@@ -219,30 +278,37 @@ fun DiscoveryExploreMapView(
 
                     val composeView = ComposeView(ctx).apply {
                         visibility = View.GONE
-                        layoutParams = FrameLayout.LayoutParams(previewSizePx, previewSizePx)
                         isClickable = false
                         isFocusable = false
-                        setOnTouchListener { _, event ->
-                            map.dispatchTouchEvent(event)
+                    }
+                    val tapMarker = Marker(map).apply {
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        isDraggable = false
+                        isEnabled = false
+                        setOnMarkerClickListener { _, _ ->
+                            if (latestInRange) {
+                                latestOnArtifactClick()
+                            } else {
+                                latestOnOutOfRangeClick()
+                            }
                             true
                         }
                     }
-                    addView(composeView)
-
-                    val overlay = ArtifactGlbMapOverlay(
-                        previewView = composeView,
-                        baseHalfSizePx = previewHalfPx,
-                        referenceZoom = mapReferenceZoom,
-                        geoPointProvider = { latestArtifact },
-                        enabledProvider = { latestShowGlbPreview },
-                        inRangeProvider = { latestInRange },
-                        onInRangeClick = { latestOnArtifactClick() },
-                        onOutOfRangeClick = { latestOnOutOfRangeClick() },
+                    // Child of MapView (not FrameLayout sibling) — osmdroid re-layouts on pan/zoom.
+                    map.addView(
+                        composeView,
+                        MapView.LayoutParams(
+                            previewSizePx,
+                            previewSizePx,
+                            OsmGeoPoint(0.0, 0.0),
+                            MapView.LayoutParams.CENTER,
+                            0,
+                            0,
+                        ),
                     )
-                    map.overlays.add(overlay)
 
                     mapView = map
-                    glbPreviewHost = MapGlbPreviewHost(map, composeView, overlay)
+                    glbPreviewHost = MapGlbPreviewHost(map, composeView, tapMarker)
                 }
             },
             update = { _ ->

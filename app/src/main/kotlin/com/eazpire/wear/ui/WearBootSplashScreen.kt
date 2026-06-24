@@ -48,7 +48,7 @@ import com.eazpire.wear.theme.EazWearColors
 import kotlinx.coroutines.delay
 
 private const val SEGMENTS = 16
-private const val WEAR_LOGO_ASPECT = 1290f / 450f
+private const val WEAR_LOGO_ASPECT = 1536f / 1024f
 private const val LOGO_GLOW_MS = 2200
 
 /** Matches wear-web `wear-boot-loader.js` + `community.css` (16-segment bar, logo glow, dark gradient). */
