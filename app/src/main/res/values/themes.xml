@@ -10,8 +10,9 @@
     </style>
 
     <style name="Theme.EazpireWear.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/wear_bg</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="windowSplashScreenBackground">@color/wear_boot_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/wear_boot_splash_icon</item>
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
         <item name="postSplashScreenTheme">@style/Theme.EazpireWear</item>
     </style>
 </resources>

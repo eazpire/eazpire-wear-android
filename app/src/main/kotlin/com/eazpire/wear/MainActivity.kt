@@ -87,12 +87,12 @@ class MainActivity : ComponentActivity() {
         // API 35+: edge-to-edge default; insets via Compose root (systemBarsPadding) — same as Creator app.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setFormat(PixelFormat.RGBA_8888)
-        window.decorView.setBackgroundColor(AndroidColor.parseColor("#FAFAFA"))
-        window.statusBarColor = AndroidColor.parseColor("#FAFAFA")
-        window.navigationBarColor = AndroidColor.parseColor("#FFFFFF")
+        window.decorView.setBackgroundColor(AndroidColor.parseColor("#07080D"))
+        window.statusBarColor = AndroidColor.parseColor("#07080D")
+        window.navigationBarColor = AndroidColor.parseColor("#05060A")
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = true
-            isAppearanceLightNavigationBars = true
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
         }
         tokenStore = SecureTokenStore.get(this)
         sessionHandoff = CreatorSessionHandoff(this)
@@ -132,6 +132,12 @@ private fun WearApp(
     var autoJoinTrigger by remember { mutableIntStateOf(0) }
 
     val activity = context as? ComponentActivity
+
+    // Release Android 12 system splash immediately so WearBootSplashScreen (web-matching) is visible.
+    LaunchedEffect(Unit) {
+        onContentReady()
+    }
+
     SideEffect {
         activity?.window?.let { window ->
             val controller = WindowInsetsControllerCompat(window, window.decorView)
@@ -154,10 +160,6 @@ private fun WearApp(
                 }
             }
         }
-    }
-
-    LaunchedEffect(screen) {
-        if (screen != AppScreen.Booting) onContentReady()
     }
 
     suspend fun resolveLoggedInDestination(): AppScreen = withContext(Dispatchers.IO) {

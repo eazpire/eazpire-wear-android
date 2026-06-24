@@ -7,4 +7,6 @@
     <color name="wear_purple">#A78BFA</color>
     <color name="wear_text">#F8FAFC</color>
     <color name="wear_muted">#94A3B8</color>
+    <!-- wear-web boot loader background -->
+    <color name="wear_boot_bg">#07080D</color>
 </resources>

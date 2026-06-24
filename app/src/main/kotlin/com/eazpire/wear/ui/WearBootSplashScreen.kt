@@ -48,7 +48,8 @@ import com.eazpire.wear.theme.EazWearColors
 import kotlinx.coroutines.delay
 
 private const val SEGMENTS = 16
-private const val WEAR_LOGO_ASPECT = 1024f / 352f
+private const val WEAR_LOGO_ASPECT = 1290f / 450f
+private const val LOGO_GLOW_MS = 2200
 
 /** Matches wear-web `wear-boot-loader.js` + `community.css` (16-segment bar, logo glow, dark gradient). */
 @Composable
@@ -72,7 +73,7 @@ fun WearBootSplashScreen(
         initialValue = 1f,
         targetValue = 1.012f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
+            animation = tween(LOGO_GLOW_MS, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "wearBootLogoScale",
@@ -81,7 +82,7 @@ fun WearBootSplashScreen(
         initialValue = 0.22f,
         targetValue = 0.42f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
+            animation = tween(LOGO_GLOW_MS, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "wearBootLogoGlow",
@@ -149,12 +150,25 @@ fun WearBootSplashScreen(
                 modifier = Modifier
                     .fillMaxWidth(0.88f)
                     .aspectRatio(WEAR_LOGO_ASPECT)
+                    .drawBehind {
+                        val glowRadius = size.width * 0.55f
+                        val glowAlpha = glowStrength * 0.85f
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    EazWearColors.HubOrange.copy(alpha = glowAlpha),
+                                    Color.Transparent,
+                                ),
+                                center = Offset(size.width / 2f, size.height / 2f),
+                                radius = glowRadius,
+                            ),
+                            radius = glowRadius,
+                            center = Offset(size.width / 2f, size.height / 2f),
+                        )
+                    }
                     .graphicsLayer {
                         scaleX = pulseScale
                         scaleY = pulseScale
-                        shadowElevation = 24f * glowStrength
-                        ambientShadowColor = EazWearColors.HubOrange.copy(alpha = glowStrength)
-                        spotShadowColor = EazWearColors.HubOrange.copy(alpha = glowStrength)
                     },
             )
             Spacer(modifier = Modifier.height(14.dp))
