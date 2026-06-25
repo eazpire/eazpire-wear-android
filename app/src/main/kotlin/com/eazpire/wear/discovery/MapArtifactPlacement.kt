@@ -40,6 +40,16 @@ data class MapArtifactViewState(
     val onOutOfRangeClick: () -> Unit = {},
 )
 
+/** Saved AR drawing marker on the discovery map. */
+data class MapArDrawingViewState(
+    val id: String,
+    val location: GeoPoint,
+    val title: String = "",
+    val inRange: Boolean = false,
+    val onClick: () -> Unit = {},
+    val onOutOfRangeClick: () -> Unit = {},
+)
+
 /** Place artifact a few meters from the user at the same floor / altitude. */
 fun placeArtifactNearUser(
     lat: Double,

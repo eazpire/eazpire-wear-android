@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -65,6 +66,7 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.eazpire.wear.R
+import com.eazpire.wear.core.api.WearPlayerApi
 import com.eazpire.wear.core.model.MapArtifactDefaults
 import com.eazpire.wear.core.model.MapArtifactProduct
 import com.eazpire.wear.theme.EazWearColors
@@ -98,44 +100,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-/**
- * SceneView resumes ARCore when its lifecycle observer is added. If the activity is already
- * RESUMED, that happens before the AR [SurfaceView] exists — [Session.resume] then crashes.
- * This owner keeps ARCore paused until [resumeAr] is called after the surface is mounted.
- */
-private class DeferredArLifecycleOwner : LifecycleOwner {
-    private val registry = LifecycleRegistry(this)
-
-    override val lifecycle: Lifecycle
-        get() = registry
-
-    init {
-        registry.currentState = Lifecycle.State.CREATED
-    }
-
-    fun resumeAr() {
-        if (registry.currentState == Lifecycle.State.CREATED) {
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        }
-        if (registry.currentState == Lifecycle.State.STARTED) {
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        }
-    }
-
-    fun destroy() {
-        if (registry.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-        }
-        if (registry.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-        }
-        if (registry.currentState != Lifecycle.State.DESTROYED) {
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        }
-    }
-}
+import org.json.JSONObject
 
 private enum class ArCoreSupport {
     Checking,
@@ -242,6 +209,9 @@ fun ArtifactArScreen(
     onClose: () -> Unit,
     userLocation: GeoPoint? = null,
     artifactLocation: GeoPoint? = null,
+    api: WearPlayerApi? = null,
+    ownerId: String? = null,
+    onDrawingSaved: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -351,6 +321,9 @@ fun ArtifactArScreen(
                     artifact = artifact,
                     userLocation = userLocation,
                     artifactLocation = artifactLocation,
+                    api = api,
+                    ownerId = ownerId,
+                    onDrawingSaved = onDrawingSaved,
                     onClose = onClose,
                 )
             }
@@ -363,9 +336,13 @@ private fun ArtifactWorldArScene(
     artifact: MapArtifactProduct,
     userLocation: GeoPoint?,
     artifactLocation: GeoPoint?,
+    api: WearPlayerApi?,
+    ownerId: String?,
+    onDrawingSaved: (() -> Unit)?,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
@@ -443,10 +420,16 @@ private fun ArtifactWorldArScene(
     var modelRotationY by remember { mutableFloatStateOf(0f) }
     var isRotationDragging by remember { mutableStateOf(false) }
     var virtualLightOn by remember { mutableStateOf(false) }
+    var featureMode by remember { mutableStateOf(ArtifactArFeatureMode.Hand) }
+    var showModeMenu by remember { mutableStateOf(false) }
+    var isSavingDrawing by remember { mutableStateOf(false) }
+    var canvasSaveMessage by remember { mutableStateOf<String?>(null) }
+    var hostingAnchor by remember { mutableStateOf<Anchor?>(null) }
+    var hostedCloudAnchorId by remember { mutableStateOf<String?>(null) }
+    val canvasFrameWidthM = 0.5f
     /** Keep plane overlay until staged placement finishes — abrupt disable leaves stale
      *  "Transparent Textured" textures bound and Filament aborts on commit. */
     var showPlaneRenderer by remember { mutableStateOf(true) }
-    val isPlacementTransition = stagedPlacementAnchor != null
 
     val cameraMovementTracker = remember { ArtifactArCameraMovementTracker() }
     val gpsMascotMovement = rememberEazyMascotGpsMovement(userLocation)
@@ -497,7 +480,12 @@ private fun ArtifactWorldArScene(
     }
     val isDisplayContentReady = placedGlbInstance != null || artworkBitmap != null
     val isArtifactPlaced = placementAnchor != null
-    val canPlace = cameraTracking && isDisplayContentReady && !isClosing && !isArtifactPlaced && arSessionResumed
+    val isPlacementTransition = stagedPlacementAnchor != null
+    val isHandMode = featureMode == ArtifactArFeatureMode.Hand
+    val isViewerMode = featureMode == ArtifactArFeatureMode.Viewer
+    val isCanvasMode = featureMode == ArtifactArFeatureMode.Canvas
+    val showHandPlacement = isHandMode && !isArtifactPlaced && !isPlacementTransition
+    val canPlace = cameraTracking && isDisplayContentReady && !isClosing && !isArtifactPlaced && arSessionResumed && isHandMode
 
     LaunchedEffect(modelLoader, modelAssetPath, artifact.imageUrl) {
         placedGlbInstance = null
@@ -656,6 +644,82 @@ private fun ArtifactWorldArScene(
         detachPlacementAnchor()
     }
 
+    fun onFeatureModeSelected(mode: ArtifactArFeatureMode) {
+        if (mode == featureMode) {
+            showModeMenu = false
+            return
+        }
+        if (mode == ArtifactArFeatureMode.Canvas || mode == ArtifactArFeatureMode.Viewer) {
+            detachPlacementAnchor()
+            showPlaneRenderer = true
+        }
+        featureMode = mode
+        showModeMenu = false
+    }
+
+    fun saveCanvasDrawing(pngBytes: ByteArray) {
+        if (isSavingDrawing || api == null) return
+        val loc = userLocation
+        val session = arSession
+        val frame = latestFrame
+        if (loc == null || session == null || frame == null) {
+            canvasSaveMessage = context.getString(R.string.artifact_ar_canvas_save_failed)
+            isSavingDrawing = false
+            return
+        }
+        isSavingDrawing = true
+        val planeHit = findArtifactPlaneHit(frame, screenWidthPx, screenHeightPx)
+        val anchor = planeHit?.createAnchor()
+            ?: createArtifactAnchorAtScreenPoint(
+                session = session,
+                frame = frame,
+                screenX = screenWidthPx * ARTIFACT_AR_HIT_TEST_X,
+                screenY = screenHeightPx * ARTIFACT_AR_HIT_TEST_Y,
+                screenWidthPx = screenWidthPx,
+                screenHeightPx = screenHeightPx,
+            )
+        if (anchor == null) {
+            canvasSaveMessage = context.getString(R.string.artifact_ar_canvas_save_failed)
+            isSavingDrawing = false
+            return
+        }
+        val poseSnapshot = ArCloudAnchorHelper.poseFromAnchor(anchor)
+        hostingAnchor = ArCloudAnchorHelper.beginHost(session, anchor)
+        scope.launch {
+            var cloudId: String? = null
+            repeat(120) {
+                val id = ArCloudAnchorHelper.pollHostingState(hostingAnchor)
+                if (id != null) {
+                    cloudId = id
+                    return@repeat
+                }
+                if (ArCloudAnchorHelper.isHostingTerminal(hostingAnchor)) return@repeat
+                delay(100)
+            }
+            hostedCloudAnchorId = cloudId
+            val body = JSONObject()
+                .put("image_base64", ArCloudAnchorHelper.bitmapToBase64Png(pngBytes))
+                .put("lat", loc.lat)
+                .put("lng", loc.lng)
+                .put("width_m", canvasFrameWidthM.toDouble())
+                .put("pose", poseSnapshot.toJson())
+            if (!cloudId.isNullOrBlank()) body.put("cloud_anchor_id", cloudId)
+            val result = runCatching { api.arDrawingsSave(body) }.getOrElse {
+                JSONObject().put("ok", false).put("error", it.message)
+            }
+            isSavingDrawing = false
+            if (result.optBoolean("ok", false)) {
+                canvasSaveMessage = context.getString(R.string.artifact_ar_canvas_save_success)
+                onDrawingSaved?.invoke()
+            } else {
+                canvasSaveMessage = result.optString("error", context.getString(R.string.artifact_ar_canvas_save_failed))
+            }
+            hostingAnchor?.detach()
+            hostingAnchor = null
+            anchor.detach()
+        }
+    }
+
     fun requestClose() {
         if (isClosing) return
         Log.d(ARTIFACT_AR_LOG_TAG, "close requested")
@@ -711,11 +775,12 @@ private fun ArtifactWorldArScene(
                 materialLoader = materialLoader,
                 environment = environment,
                 mainLightNode = mainLightNode,
-                planeRenderer = showPlaneRenderer,
+                planeRenderer = if (isCanvasMode) true else showPlaneRenderer,
                 lifecycle = arLifecycleOwner.lifecycle,
                 sessionConfiguration = { _, config ->
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                     config.instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
+                    ArCloudAnchorHelper.enableInConfig(config)
                 },
                 onTouchEvent = { event, _ ->
                     // Backup path: same atomic state as the overlay (ARScene touchDispatcher is stale).
@@ -806,7 +871,36 @@ private fun ArtifactWorldArScene(
             ArtifactArEazyMascotComposeOverlay(
                 cameraMovement = cameraMovementTracker.state,
                 gpsMovement = gpsMascotMovement,
+                showModeMenu = showModeMenu,
+                selectedMode = featureMode,
+                onModeSelected = ::onFeatureModeSelected,
+                onMascotTap = { showModeMenu = !showModeMenu },
             )
+        }
+
+        if (isCanvasMode && !isClosing) {
+            ArtifactArCanvasOverlay(
+                hasValidSurface = hasValidSurface,
+                cameraTracking = cameraTracking,
+                isSaving = isSavingDrawing,
+                onSave = ::saveCanvasDrawing,
+                modifier = Modifier.fillMaxSize(),
+            )
+            canvasSaveMessage?.let { msg ->
+                Text(
+                    text = msg,
+                    color = EazWearColors.HubOrange,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 100.dp)
+                        .zIndex(5f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EazWearColors.HubPanel.copy(alpha = 0.9f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
         }
 
         if (isArtifactPlaced && placedGlbInstance == null && artworkBitmap != null) {
@@ -897,7 +991,8 @@ private fun ArtifactWorldArScene(
             }
         }
 
-        if (!isArtifactPlaced && !isPlacementTransition) {
+        if (!isArtifactPlaced && !isPlacementTransition && !isCanvasMode) {
+            if (!isViewerMode) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -978,6 +1073,7 @@ private fun ArtifactWorldArScene(
                 },
                 modifier = Modifier.fillMaxSize(),
             )
+            }
         }
 
         Column(
@@ -988,7 +1084,7 @@ private fun ArtifactWorldArScene(
                 .zIndex(3f),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (!isArtifactPlaced) {
+            if (showHandPlacement) {
                 Text(
                     text = stringResource(R.string.artifact_ar_place_hint),
                     style = MaterialTheme.typography.bodySmall,
@@ -1035,7 +1131,7 @@ private fun ArtifactWorldArScene(
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-            } else {
+            } else if (isArtifactPlaced || isViewerMode) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1077,7 +1173,17 @@ private fun ArtifactWorldArScene(
                     }
                 }
             }
-            if (!isArtifactPlaced) {
+            if (showHandPlacement || isViewerMode) {
+                if (!isArtifactPlaced && !isViewerMode) {
+                    TextButton(onClick = { requestClose() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
+                    }
+                }
+            } else if (!isCanvasMode) {
+                TextButton(onClick = { requestClose() }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
+                }
+            } else if (!isSavingDrawing) {
                 TextButton(onClick = { requestClose() }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
                 }

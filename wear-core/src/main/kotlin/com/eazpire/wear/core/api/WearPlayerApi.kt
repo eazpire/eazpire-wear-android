@@ -1,6 +1,7 @@
 package com.eazpire.wear.core.api
 
 import com.eazpire.wear.core.auth.AuthConfig
+import com.eazpire.wear.core.model.ArDrawing
 import com.eazpire.wear.core.model.ArtifactItem
 import com.eazpire.wear.core.model.MapArtifactDefaults
 import com.eazpire.wear.core.model.MapArtifactProduct
@@ -54,11 +55,15 @@ class WearPlayerApi(
                 }
             }
         }
+        // Include op in POST JSON body — some proxies strip query strings on POST to creator-dispatch.
         val requestBody = when {
-            method == "POST" && body != null ->
+            method == "POST" && body != null -> {
+                if (!body.has("op")) body.put("op", op)
                 body.toString().toRequestBody("application/json".toMediaType())
+            }
             method == "POST" ->
-                "{}".toRequestBody("application/json".toMediaType())
+                JSONObject().put("op", op).toString()
+                    .toRequestBody("application/json".toMediaType())
             else -> null
         }
         val request = Request.Builder()
@@ -384,6 +389,54 @@ class WearPlayerApi(
 
     suspend fun discoveryRankingsGlobal(limit: Int = 50): JSONObject =
         dispatch("discovery-rankings-global", query = mapOf("limit" to limit.toString()))
+
+    // --- AR canvas drawings ---
+
+    suspend fun arDrawingsList(
+        minLat: Double? = null,
+        maxLat: Double? = null,
+        minLng: Double? = null,
+        maxLng: Double? = null,
+    ): JSONObject {
+        val q = mutableMapOf<String, String>()
+        if (minLat != null) q["min_lat"] = minLat.toString()
+        if (maxLat != null) q["max_lat"] = maxLat.toString()
+        if (minLng != null) q["min_lng"] = minLng.toString()
+        if (maxLng != null) q["max_lng"] = maxLng.toString()
+        return dispatch("ar-drawings-list", query = q)
+    }
+
+    suspend fun arDrawingsSave(body: JSONObject): JSONObject =
+        dispatch("ar-drawings-save", method = "POST", body = body)
+
+    suspend fun arDrawingsDelete(id: String): JSONObject =
+        dispatch("ar-drawings-delete", method = "POST", body = JSONObject().put("id", id))
+
+    fun parseArDrawings(json: JSONObject): List<ArDrawing> {
+        val arr = json.optJSONArray("drawings") ?: JSONArray()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val pose = o.optJSONObject("pose") ?: JSONObject()
+            ArDrawing(
+                id = o.optString("id", ""),
+                cloudAnchorId = o.optString("cloud_anchor_id", "").takeIf { it.isNotBlank() },
+                poseTx = pose.optDouble("tx", 0.0).toFloat(),
+                poseTy = pose.optDouble("ty", 0.0).toFloat(),
+                poseTz = pose.optDouble("tz", 0.0).toFloat(),
+                poseQx = pose.optDouble("qx", 0.0).toFloat(),
+                poseQy = pose.optDouble("qy", 0.0).toFloat(),
+                poseQz = pose.optDouble("qz", 0.0).toFloat(),
+                poseQw = pose.optDouble("qw", 1.0).toFloat(),
+                lat = o.optDouble("lat", 0.0),
+                lng = o.optDouble("lng", 0.0),
+                widthM = o.optDouble("width_m", 0.5).toFloat(),
+                imageR2Key = o.optString("image_r2_key", ""),
+                imageUrl = o.optString("image_url", "").takeIf { it.isNotBlank() },
+                title = o.optString("title", "").takeIf { it.isNotBlank() },
+                createdAt = o.optLong("created_at", 0L),
+            )
+        }
+    }
 
     // --- Feed ---
 

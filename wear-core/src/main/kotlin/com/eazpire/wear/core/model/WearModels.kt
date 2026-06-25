@@ -151,3 +151,23 @@ object MapArtifactDefaults {
         shopCardAnimatedFallback(),
     )
 }
+
+/** Saved AR canvas drawing (account-bound, optional cloud anchor). */
+data class ArDrawing(
+    val id: String,
+    val cloudAnchorId: String? = null,
+    val poseTx: Float = 0f,
+    val poseTy: Float = 0f,
+    val poseTz: Float = 0f,
+    val poseQx: Float = 0f,
+    val poseQy: Float = 0f,
+    val poseQz: Float = 0f,
+    val poseQw: Float = 1f,
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
+    val widthM: Float = 0.5f,
+    val imageR2Key: String = "",
+    val imageUrl: String? = null,
+    val title: String? = null,
+    val createdAt: Long = 0L,
+)

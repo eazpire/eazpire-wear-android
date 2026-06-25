@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.eazpire.wear.discovery.ArDrawingResolveScreen
 import com.eazpire.wear.discovery.ArtifactArScreen
 import com.eazpire.wear.discovery.DiscoveryExploreControlsRow
 import com.eazpire.wear.discovery.DiscoveryExploreMapView
@@ -41,10 +42,12 @@ import com.eazpire.wear.discovery.MoveToEarnWalletCard
 import com.eazpire.wear.core.model.MoveToEarnWallet
 import com.eazpire.wear.discovery.DiscoveryInitialLocationEffect
 import com.eazpire.wear.discovery.GeoPoint
+import com.eazpire.wear.discovery.MapArDrawingViewState
 import com.eazpire.wear.discovery.MapArtifactViewState
 import com.eazpire.wear.discovery.isWithinArtifactRange
 import com.eazpire.wear.discovery.placeArtifactNearUser
 import com.eazpire.wear.discovery.placeSecondArtifactNearFirst
+import com.eazpire.wear.core.model.ArDrawing
 import com.eazpire.wear.core.model.MapArtifactDefaults
 import com.eazpire.wear.core.model.MapArtifactProduct
 import com.eazpire.wear.theme.EazWearColors
@@ -322,7 +325,7 @@ fun VaultScreen(api: WearPlayerApi, ownerId: String) {
 }
 
 @Composable
-fun MoveScreen(api: WearPlayerApi) {
+fun MoveScreen(api: WearPlayerApi, ownerId: String = "") {
     val context = LocalContext.current
     var steps by remember { mutableStateOf("—") }
     var exploring by remember { mutableStateOf(false) }
@@ -332,6 +335,9 @@ fun MoveScreen(api: WearPlayerApi) {
     var showAr by remember { mutableStateOf(false) }
     var arArtifact by remember { mutableStateOf<MapArtifactProduct?>(null) }
     var arArtifactLocation by remember { mutableStateOf<GeoPoint?>(null) }
+    var arDrawings by remember { mutableStateOf<List<ArDrawing>>(emptyList()) }
+    var showArDrawing by remember { mutableStateOf(false) }
+    var arDrawingTarget by remember { mutableStateOf<ArDrawing?>(null) }
     var artifactHint by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -367,6 +373,12 @@ fun MoveScreen(api: WearPlayerApi) {
                 }
                 if (mapArtifacts.isEmpty()) {
                     mapArtifacts = api.resolveMapArtifactProducts()
+                }
+                if (ownerId.isNotBlank()) {
+                    val drawingsJson = api.arDrawingsList()
+                    if (drawingsJson.optBoolean("ok", false)) {
+                        arDrawings = api.parseArDrawings(drawingsJson)
+                    }
                 }
             }.onFailure { error = it.message }
         }
@@ -410,13 +422,42 @@ fun MoveScreen(api: WearPlayerApi) {
         )
     }
 
+    val mapArDrawingViews = arDrawings.map { drawing ->
+        val location = GeoPoint(drawing.lat, drawing.lng)
+        MapArDrawingViewState(
+            id = drawing.id,
+            location = location,
+            title = drawing.title.orEmpty(),
+            inRange = isWithinArtifactRange(currentLocation, location),
+            onClick = {
+                arDrawingTarget = drawing
+                showArDrawing = true
+            },
+            onOutOfRangeClick = { artifactHint = "drawing_too_far" },
+        )
+    }
+
     val nearestInRange = mapArtifactViews.firstOrNull { it.inRange }
+
+    if (showArDrawing && arDrawingTarget != null) {
+        ArDrawingResolveScreen(
+            drawing = arDrawingTarget!!,
+            onClose = {
+                showArDrawing = false
+                arDrawingTarget = null
+            },
+        )
+        return
+    }
 
     if (showAr && arArtifact != null) {
         ArtifactArScreen(
             artifact = arArtifact!!,
             userLocation = currentLocation,
             artifactLocation = arArtifactLocation,
+            api = api,
+            ownerId = ownerId.takeIf { it.isNotBlank() },
+            onDrawingSaved = { load() },
             onClose = {
                 showAr = false
                 arArtifact = null
@@ -431,6 +472,7 @@ fun MoveScreen(api: WearPlayerApi) {
             currentLocation = currentLocation,
             trackPoints = trackPoints,
             mapArtifacts = mapArtifactViews,
+            mapArDrawings = mapArDrawingViews,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -468,9 +510,15 @@ fun MoveScreen(api: WearPlayerApi) {
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
-            if (artifactHint == "too_far") {
+            if (artifactHint == "too_far" || artifactHint == "drawing_too_far") {
                 Text(
-                    stringResource(R.string.artifact_map_tap_denied),
+                    stringResource(
+                        if (artifactHint == "drawing_too_far") {
+                            R.string.artifact_ar_drawing_tap_denied
+                        } else {
+                            R.string.artifact_map_tap_denied
+                        },
+                    ),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )

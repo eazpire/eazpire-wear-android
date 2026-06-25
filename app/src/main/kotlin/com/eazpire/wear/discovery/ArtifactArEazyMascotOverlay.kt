@@ -8,8 +8,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -213,6 +216,10 @@ private fun movementToVisuals(relativeBearing: Float): Pair<Boolean, Float> {
 fun ArtifactArEazyMascotComposeOverlay(
     cameraMovement: EazyMascotMovementState,
     gpsMovement: EazyMascotMovementState?,
+    showModeMenu: Boolean = false,
+    selectedMode: ArtifactArFeatureMode = ArtifactArFeatureMode.Hand,
+    onModeSelected: (ArtifactArFeatureMode) -> Unit = {},
+    onMascotTap: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val movement = resolveEazyMascotMovement(cameraMovement, gpsMovement)
@@ -244,19 +251,36 @@ fun ArtifactArEazyMascotComposeOverlay(
             .fillMaxSize()
             .zIndex(12f),
     ) {
-        Image(
-            painter = painterResource(R.drawable.ic_eazy_mascot),
-            contentDescription = null,
+        Column(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .statusBarsPadding()
-                .padding(top = 8.dp, end = 12.dp)
-                .offset(y = bobOffset.dp)
-                .size(56.dp)
-                .graphicsLayer {
-                    rotationZ = leanAnim.value
-                    scaleX = scaleXAnim.value
-                },
-        )
+                .padding(top = 8.dp, end = 12.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_eazy_mascot),
+                contentDescription = null,
+                modifier = Modifier
+                    .offset(y = bobOffset.dp)
+                    .size(56.dp)
+                    .graphicsLayer {
+                        rotationZ = leanAnim.value
+                        scaleX = scaleXAnim.value
+                    }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onMascotTap,
+                    ),
+            )
+            if (showModeMenu) {
+                ArtifactArFeatureModeMenu(
+                    selectedMode = selectedMode,
+                    onModeSelected = onModeSelected,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        }
     }
 }

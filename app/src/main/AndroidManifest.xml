@@ -32,6 +32,10 @@
         <meta-data
             android:name="com.google.ar.core"
             android:value="optional" />
+        <!-- Replace with your ARCore Cloud Anchor API key from Google Cloud Console for cross-session anchor hosting. -->
+        <meta-data
+            android:name="com.google.android.ar.API_KEY"
+            android:value="YOUR_ARCORE_CLOUD_ANCHOR_API_KEY" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

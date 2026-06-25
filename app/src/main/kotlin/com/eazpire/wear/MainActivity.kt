@@ -353,7 +353,7 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
                         .zIndex(if (tab == moveTabIndex) 0f else -1f)
                         .alpha(if (tab == moveTabIndex) 1f else 0f),
                 ) {
-                    MoveScreen(api)
+                    MoveScreen(api, ownerId)
                 }
             }
 

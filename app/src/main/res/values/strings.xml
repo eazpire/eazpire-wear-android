@@ -111,4 +111,18 @@
     <string name="artifact_ar_light_off">Turn off virtual light</string>
     <string name="artifact_ar_light_cd">Virtual light toggle</string>
     <string name="artifact_ar_rotation_debug">Rotate: %1$d°</string>
+    <string name="artifact_ar_mode_menu_title">AR mode</string>
+    <string name="artifact_ar_mode_viewer">Viewer</string>
+    <string name="artifact_ar_mode_hand">Hand</string>
+    <string name="artifact_ar_mode_canvas">Canvas</string>
+    <string name="artifact_ar_canvas_detect_hint">Move your phone slowly to detect a surface for your canvas.</string>
+    <string name="artifact_ar_canvas_frame_hint">Pinch to resize the frame, then tap to lock it and start drawing.</string>
+    <string name="artifact_ar_canvas_undo">Undo stroke</string>
+    <string name="artifact_ar_canvas_save">Save drawing</string>
+    <string name="artifact_ar_canvas_saving">Saving drawing…</string>
+    <string name="artifact_ar_canvas_save_success">Drawing saved to your map.</string>
+    <string name="artifact_ar_canvas_save_failed">Could not save drawing. Try again.</string>
+    <string name="artifact_ar_drawing_resolving">Loading your drawing in AR…</string>
+    <string name="artifact_ar_drawing_untitled">My AR drawing</string>
+    <string name="artifact_ar_drawing_tap_denied">Move closer to view your saved drawing in AR.</string>
 </resources>

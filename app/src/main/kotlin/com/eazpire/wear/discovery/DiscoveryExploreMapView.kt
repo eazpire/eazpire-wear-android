@@ -41,6 +41,7 @@ fun DiscoveryExploreMapView(
     currentLocation: GeoPoint?,
     trackPoints: List<GeoPoint>,
     mapArtifacts: List<MapArtifactViewState> = emptyList(),
+    mapArDrawings: List<MapArDrawingViewState> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -65,8 +66,10 @@ fun DiscoveryExploreMapView(
     var trackOverlay by remember { mutableStateOf<Polyline?>(null) }
     var userMarkerOverlay by remember { mutableStateOf<Marker?>(null) }
     var fallbackMarkerOverlays by remember { mutableStateOf<Map<String, Marker>>(emptyMap()) }
+    var arDrawingMarkerOverlays by remember { mutableStateOf<Map<String, Marker>>(emptyMap()) }
 
     val latestArtifacts by rememberUpdatedState(mapArtifacts)
+    val latestArDrawings by rememberUpdatedState(mapArDrawings)
 
     fun syncAllGlbPreviewLayouts() {
         val map = mapView ?: return
@@ -202,7 +205,7 @@ fun DiscoveryExploreMapView(
         }
     }
 
-    LaunchedEffect(currentLocation, trackPoints, mapArtifacts) {
+    LaunchedEffect(currentLocation, trackPoints, mapArtifacts, mapArDrawings) {
         val map = mapView ?: return@LaunchedEffect
         val osmTrack = trackPoints.map { OsmGeoPoint(it.lat, it.lng) }
 
@@ -259,6 +262,30 @@ fun DiscoveryExploreMapView(
             map.overlays.add(marker)
         }
         fallbackMarkerOverlays = newFallbackMarkers
+
+        arDrawingMarkerOverlays.values.forEach { map.overlays.remove(it) }
+        val newDrawingMarkers = mutableMapOf<String, Marker>()
+        mapArDrawings.forEach { drawing ->
+            val marker = Marker(map).apply {
+                position = OsmGeoPoint(drawing.location.lat, drawing.location.lng)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                title = drawing.title.ifBlank { "AR drawing" }
+                snippet = if (drawing.inRange) "" else "too_far"
+                icon = createArDrawingMarkerDrawable(context, drawing.inRange)
+                isDraggable = false
+                setOnMarkerClickListener { _, _ ->
+                    if (drawing.inRange) {
+                        drawing.onClick()
+                    } else {
+                        drawing.onOutOfRangeClick()
+                    }
+                    true
+                }
+            }
+            newDrawingMarkers[drawing.id] = marker
+            map.overlays.add(marker)
+        }
+        arDrawingMarkerOverlays = newDrawingMarkers
 
         val activeIds = mapArtifacts.filter { it.modelUrl.isNotBlank() }.map { it.id }.toSet()
         glbPreviewHosts.values.filter { it.id !in activeIds }.toList().forEach { removeGlbPreviewHost(it) }
