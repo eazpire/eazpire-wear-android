@@ -16,7 +16,7 @@ import androidx.compose.material.icons.filled.Feed
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -51,6 +51,7 @@ import com.eazpire.wear.core.auth.SecureTokenStore
 import com.eazpire.wear.core.brand.BrandAssetsRepository
 import com.eazpire.wear.sync.WearPlayerAuthSync
 import com.eazpire.wear.theme.EazWearColors
+import com.eazpire.wear.theme.EazWearHubBackground
 import com.eazpire.wear.theme.EazWearScreenBackground
 import com.eazpire.wear.theme.EazWearTheme
 import com.eazpire.wear.ui.AuthScreen
@@ -61,7 +62,7 @@ import com.eazpire.wear.ui.MoveScreen
 import com.eazpire.wear.ui.QrScanScreen
 import com.eazpire.wear.ui.SquadScreen
 import com.eazpire.wear.ui.VaultScreen
-import com.eazpire.wear.ui.VerifyScreen
+import com.eazpire.wear.ui.WalletScreen
 import com.eazpire.wear.ui.WearBootSplashScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -154,11 +155,11 @@ private fun WearApp(
                     controller.isAppearanceLightNavigationBars = false
                 }
                 else -> {
-                    window.statusBarColor = AndroidColor.parseColor("#FAFAFA")
-                    window.navigationBarColor = AndroidColor.parseColor("#FFFFFF")
-                    window.decorView.setBackgroundColor(AndroidColor.parseColor("#FAFAFA"))
-                    controller.isAppearanceLightStatusBars = true
-                    controller.isAppearanceLightNavigationBars = true
+                    window.statusBarColor = AndroidColor.parseColor("#07080D")
+                    window.navigationBarColor = AndroidColor.parseColor("#05060A")
+                    window.decorView.setBackgroundColor(AndroidColor.parseColor("#07080D"))
+                    controller.isAppearanceLightStatusBars = false
+                    controller.isAppearanceLightNavigationBars = false
                 }
             }
         }
@@ -252,7 +253,7 @@ private fun WearApp(
             },
             )
         }
-        AppScreen.Main -> EazWearScreenBackground {
+        AppScreen.Main -> EazWearHubBackground {
             WearMainShell(
             tokenStore = tokenStore,
             onSignOut = {
@@ -266,7 +267,7 @@ private fun WearApp(
     }
 }
 
-private enum class WearTab { Hub, Feed, Verify, Squad, Vault, Move }
+private enum class WearTab { Hub, Feed, Wallet, Squad, Vault, Move }
 
 @Composable
 private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
@@ -277,38 +278,38 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
     val tabs = WearTab.entries
 
     Scaffold(
-        containerColor = EazWearColors.Background,
+        containerColor = EazWearColors.HubBg,
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TextButton(onClick = onSignOut, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text(
                     stringResource(R.string.sign_out),
-                    color = EazWearColors.TextSubtle,
+                    color = EazWearColors.HubMuted,
                 )
             }
         },
         bottomBar = {
             NavigationBar(
-                containerColor = EazWearColors.Panel,
-                contentColor = EazWearColors.TextPrimary,
+                containerColor = EazWearColors.HubPanel,
+                contentColor = EazWearColors.HubText,
             ) {
                 tabs.forEachIndexed { index, wearTab ->
                     NavigationBarItem(
                         selected = tab == index,
                         onClick = { tab = index },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = EazWearColors.Orange,
-                            selectedTextColor = EazWearColors.Orange,
-                            unselectedIconColor = EazWearColors.TextMuted,
-                            unselectedTextColor = EazWearColors.TextMuted,
-                            indicatorColor = EazWearColors.Orange.copy(alpha = 0.18f),
+                            selectedIconColor = EazWearColors.HubOrange,
+                            selectedTextColor = EazWearColors.HubOrange,
+                            unselectedIconColor = EazWearColors.HubMuted,
+                            unselectedTextColor = EazWearColors.HubMuted,
+                            indicatorColor = EazWearColors.HubOrange.copy(alpha = 0.18f),
                         ),
                         icon = {
                             Icon(
                                 when (wearTab) {
                                     WearTab.Hub -> Icons.Default.Home
                                     WearTab.Feed -> Icons.Default.Feed
-                                    WearTab.Verify -> Icons.Default.Verified
+                                    WearTab.Wallet -> Icons.Default.AccountBalanceWallet
                                     WearTab.Squad -> Icons.Default.Groups
                                     WearTab.Vault -> Icons.Default.Inventory2
                                     WearTab.Move -> Icons.Default.DirectionsWalk
@@ -321,7 +322,7 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
                                 when (wearTab) {
                                     WearTab.Hub -> stringResource(R.string.tab_hub)
                                     WearTab.Feed -> stringResource(R.string.tab_feed)
-                                    WearTab.Verify -> stringResource(R.string.tab_verify)
+                                    WearTab.Wallet -> stringResource(R.string.tab_wallet)
                                     WearTab.Squad -> stringResource(R.string.tab_squad)
                                     WearTab.Vault -> stringResource(R.string.tab_vault)
                                     WearTab.Move -> stringResource(R.string.tab_move)
@@ -365,7 +366,7 @@ private fun WearMainShell(tokenStore: SecureTokenStore, onSignOut: () -> Unit) {
                     when (tabs[tab]) {
                         WearTab.Hub -> HubScreen(api, ownerId, context)
                         WearTab.Feed -> FeedScreen(api)
-                        WearTab.Verify -> VerifyScreen(api, ownerId)
+                        WearTab.Wallet -> WalletScreen(api, ownerId)
                         WearTab.Squad -> SquadScreen(api, ownerId)
                         WearTab.Vault -> VaultScreen(api, ownerId)
                         WearTab.Move -> Unit

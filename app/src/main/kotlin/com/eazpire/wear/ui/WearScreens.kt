@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.eazpire.wear.discovery.ArtifactArScreen
 import com.eazpire.wear.discovery.DiscoveryExploreControlsRow
@@ -84,13 +85,27 @@ fun HubScreen(api: WearPlayerApi, ownerId: String, context: android.content.Cont
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(stringResource(R.string.welcome_title), style = MaterialTheme.typography.headlineSmall)
-            Text(stringResource(R.string.welcome_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            WearStatCard(stringResource(R.string.eaz_balance), balance)
-            WearStatCard("Username", username)
+            Text(stringResource(R.string.welcome_title), style = MaterialTheme.typography.headlineSmall, color = EazWearColors.HubText)
+            Text(stringResource(R.string.welcome_subtitle), color = EazWearColors.HubMuted)
+            WearHubStatCard(
+                emoji = "⚡",
+                label = stringResource(R.string.eaz_balance),
+                value = balance,
+                accent = EazWearColors.HubOrange,
+            )
+            WearHubStatCard(
+                emoji = "👤",
+                label = "Username",
+                value = username,
+                accent = EazWearColors.HubCyan,
+            )
             Button(
                 onClick = { WearPlayerAuthSync.push(context, com.eazpire.wear.core.auth.SecureTokenStore.get(context)) },
                 modifier = Modifier.fillMaxWidth(),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = EazWearColors.HubOrange,
+                    contentColor = EazWearColors.HubText,
+                ),
             ) { Text(stringResource(R.string.pair_watch)) }
         }
     }
@@ -125,8 +140,16 @@ fun FeedScreen(api: WearPlayerApi) {
 }
 
 @Composable
-fun VerifyScreen(api: WearPlayerApi, ownerId: String) {
-    var lines by remember { mutableStateOf<List<String>>(emptyList()) }
+fun WalletScreen(api: WearPlayerApi, ownerId: String) {
+    val context = LocalContext.current
+    var activityEaz by remember { mutableStateOf("—") }
+    var eazToday by remember { mutableStateOf("—") }
+    var eazTotal by remember { mutableStateOf("—") }
+    var eazLockedNote by remember { mutableStateOf("") }
+    var m2eWallet by remember { mutableStateOf<MoveToEarnWallet?>(null) }
+    var m2eUnlocked by remember { mutableStateOf(false) }
+    var m2eConverting by remember { mutableStateOf(false) }
+    var m2eConvertMsg by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -136,8 +159,25 @@ fun VerifyScreen(api: WearPlayerApi, ownerId: String) {
             loading = true
             error = null
             runCatching {
-                val json = api.verifyCompleted(ownerId)
-                lines = api.parseVerifyItems(json).map { "${it.title} (${it.outcome})" }
+                val bal = api.balanceSnapshot(ownerId)
+                activityEaz = String.format(Locale.US, "%.2f EAZ", bal.eazBalance.toDouble())
+                val m = api.moveToEarnStatusModel()
+                eazToday = String.format(Locale.US, "%.0f EAZ", m.eazEarnedToday.toDouble())
+                m2eUnlocked = m.wallet != null || m.eazEarnedToday > 0
+                m2eWallet = m.wallet ?: runCatching { api.moveToEarnWalletModel() }.getOrNull()
+                val w = m2eWallet
+                if (w != null) {
+                    val total = w.balanceEazcAvailable + w.balanceEazcLocked
+                    eazTotal = String.format(Locale.US, "%.2f EAZC", total)
+                    eazLockedNote = if (w.balanceEazcLocked > 0) {
+                        context.getString(R.string.wallet_locked_note, w.balanceEazcLocked)
+                    } else {
+                        context.getString(R.string.wallet_all_unlocked)
+                    }
+                } else {
+                    eazTotal = "— EAZC"
+                    eazLockedNote = context.getString(R.string.wallet_m2e_hint)
+                }
             }.onFailure { error = it.message }
             loading = false
         }
@@ -148,7 +188,80 @@ fun VerifyScreen(api: WearPlayerApi, ownerId: String) {
     when {
         loading -> WearLoading()
         error != null -> WearError(error!!) { load() }
-        else -> WearSimpleList(lines, "No verify items")
+        else -> Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.wallet_title),
+                style = MaterialTheme.typography.headlineSmall,
+                color = EazWearColors.HubText,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                stringResource(R.string.wallet_subtitle),
+                color = EazWearColors.HubMuted,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            WearHubStatCard(
+                emoji = "⚡",
+                label = stringResource(R.string.wallet_activity_eaz),
+                value = activityEaz,
+                accent = EazWearColors.HubOrange,
+            )
+            WearHubStatCard(
+                emoji = "👟",
+                label = stringResource(R.string.wallet_move_today),
+                value = eazToday,
+                accent = EazWearColors.HubCyan,
+            )
+            WearHubStatCard(
+                emoji = "💎",
+                label = stringResource(R.string.wallet_m2e_total),
+                value = eazTotal,
+                accent = Color(0xFFFFD166),
+                hint = eazLockedNote,
+            )
+            MoveToEarnWalletCard(
+                wallet = m2eWallet,
+                converting = m2eConverting,
+                convertMessage = m2eConvertMsg,
+                onConvert = {
+                    val w = m2eWallet ?: return@MoveToEarnWalletCard
+                    val amount = w.balanceEazcAvailable
+                    if (amount < w.minConvertEaz) return@MoveToEarnWalletCard
+                    scope.launch {
+                        m2eConverting = true
+                        m2eConvertMsg = null
+                        runCatching {
+                            val r = api.moveToEarnConvertToShopCredit(amount, "wear_android")
+                            if (r.optBoolean("ok", false)) {
+                                m2eConvertMsg = context.getString(R.string.m2e_wallet_convert_success)
+                                load()
+                            } else {
+                                m2eConvertMsg = r.optString("error", r.optString("message", "Convert failed"))
+                            }
+                        }.onFailure { m2eConvertMsg = it.message }
+                        m2eConverting = false
+                    }
+                },
+            )
+            if (m2eWallet == null && !m2eUnlocked) {
+                Text(
+                    stringResource(R.string.wallet_m2e_locked),
+                    color = EazWearColors.HubMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(EazWearColors.HubPanel.copy(alpha = 0.92f))
+                        .padding(14.dp),
+                )
+            }
+        }
     }
 }
 
@@ -212,10 +325,6 @@ fun VaultScreen(api: WearPlayerApi, ownerId: String) {
 fun MoveScreen(api: WearPlayerApi) {
     val context = LocalContext.current
     var steps by remember { mutableStateOf("—") }
-    var eazToday by remember { mutableStateOf("—") }
-    var m2eWallet by remember { mutableStateOf<MoveToEarnWallet?>(null) }
-    var m2eConverting by remember { mutableStateOf(false) }
-    var m2eConvertMsg by remember { mutableStateOf<String?>(null) }
     var exploring by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var mapArtifacts by remember { mutableStateOf<List<MapArtifactProduct>>(emptyList()) }
@@ -250,8 +359,6 @@ fun MoveScreen(api: WearPlayerApi) {
             runCatching {
                 val m = api.moveToEarnStatusModel()
                 steps = m.stepsToday.toString()
-                eazToday = m.eazEarnedToday.toString()
-                m2eWallet = m.wallet ?: runCatching { api.moveToEarnWalletModel() }.getOrNull()
                 val d = api.discoveryStatusModel()
                 val apiExploring = d.session != null
                 exploring = liveExploring || apiExploring
@@ -337,31 +444,6 @@ fun MoveScreen(api: WearPlayerApi) {
             DiscoveryExploreStatsBar(
                 steps = displaySteps,
                 distanceKm = if (sessionDistanceM > 0) distanceKm else "0.00 km",
-                eazToday = eazToday,
-            )
-            MoveToEarnWalletCard(
-                wallet = m2eWallet,
-                converting = m2eConverting,
-                convertMessage = m2eConvertMsg,
-                onConvert = {
-                    val w = m2eWallet ?: return@MoveToEarnWalletCard
-                    val amount = w.balanceEazcAvailable
-                    if (amount < w.minConvertEaz) return@MoveToEarnWalletCard
-                    scope.launch {
-                        m2eConverting = true
-                        m2eConvertMsg = null
-                        runCatching {
-                            val r = api.moveToEarnConvertToShopCredit(amount, "wear_android")
-                            if (r.optBoolean("ok", false)) {
-                                m2eConvertMsg = context.getString(R.string.m2e_wallet_convert_success)
-                                load()
-                            } else {
-                                m2eConvertMsg = r.optString("error", r.optString("message", "Convert failed"))
-                            }
-                        }.onFailure { m2eConvertMsg = it.message }
-                        m2eConverting = false
-                    }
-                },
             )
             if (mapArtifactViews.isNotEmpty() && currentLocation != null) {
                 val statusArtifact = nearestInRange ?: mapArtifactViews.first()

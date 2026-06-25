@@ -3,7 +3,7 @@
     <string name="app_name">Eazpire Wear</string>
     <string name="tab_hub">Hub</string>
     <string name="tab_feed">Feed</string>
-    <string name="tab_verify">Verify</string>
+    <string name="tab_wallet">Wallet</string>
     <string name="tab_squad">Squad</string>
     <string name="tab_vault">Vault</string>
     <string name="tab_move">Move</string>
@@ -28,7 +28,16 @@
     <string name="move_stat_distance">Distance</string>
     <string name="move_stat_cells">Cells</string>
     <string name="move_stat_eaz">EAZ</string>
-    <string name="m2e_wallet_title">Move to Earn Wallet</string>
+    <string name="wallet_title">EAZ Wallet</string>
+    <string name="wallet_subtitle">Activity EAZ, Move earnings, and Shop Credit conversion.</string>
+    <string name="wallet_activity_eaz">Activity EAZ</string>
+    <string name="wallet_move_today">Move today</string>
+    <string name="wallet_m2e_total">Move to Earn total</string>
+    <string name="wallet_m2e_hint">Move earnings from walking with your Character</string>
+    <string name="wallet_locked_note">%.2f EAZC locked until payout rules apply</string>
+    <string name="wallet_all_unlocked">All Move earnings unlocked</string>
+    <string name="wallet_m2e_locked">Mint and activate a bound Character to earn Move EAZ and convert to Shop Credit.</string>
+    <string name="m2e_wallet_title">Convert to Shop Credit</string>
     <string name="m2e_wallet_available">Available EAZC: %1$.2f</string>
     <string name="m2e_wallet_locked">Locked: %1$.2f</string>
     <string name="m2e_wallet_convert_hint">Convert to Shop Credit here only.</string>
@@ -48,7 +57,7 @@
     <string name="no_artifacts">No artifacts yet</string>
     <string name="no_network">No squad members yet</string>
     <string name="welcome_title">Eazpire Wear Player</string>
-    <string name="welcome_subtitle">Hub, feed, verify, squad, vault &amp; move-to-earn</string>
+    <string name="welcome_subtitle">Hub, feed, wallet, squad, vault &amp; move-to-earn</string>
     <string name="cancel">Cancel</string>
     <string name="splash_status_loading">Loading Wear Hub</string>
     <string name="splash_status_artifacts">Syncing Artifacts</string>

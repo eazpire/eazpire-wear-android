@@ -105,7 +105,6 @@ fun MoveToEarnWalletCard(
 fun DiscoveryExploreStatsBar(
     steps: String,
     distanceKm: String,
-    eazToday: String,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -120,7 +119,6 @@ fun DiscoveryExploreStatsBar(
     ) {
         StatColumn(stringResource(R.string.move_stat_steps), steps)
         StatColumn(stringResource(R.string.move_stat_distance), distanceKm)
-        StatColumn(stringResource(R.string.move_stat_eaz), eazToday)
     }
 }
 

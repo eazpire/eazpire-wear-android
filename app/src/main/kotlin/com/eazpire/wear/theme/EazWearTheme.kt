@@ -80,7 +80,7 @@ fun EazWearScreenBackground(
     }
 }
 
-/** Dark gradient + faint grid for login — matches wear-web Move to Earn hub. */
+/** Dark gradient + faint grid — matches wear-web community.css hub shell. */
 @Composable
 fun EazWearAuthBackground(
     modifier: Modifier = Modifier,
@@ -144,5 +144,16 @@ fun EazWearAuthBackground(
             },
     ) {
         content()
+    }
+}
+
+/** Dark hub shell for logged-in tabs — same gradient as auth / wear-web. */
+@Composable
+fun EazWearHubBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(modifier = modifier.fillMaxSize().systemBarsPadding()) {
+        EazWearAuthBackground(modifier = Modifier.fillMaxSize(), content = content)
     }
 }
