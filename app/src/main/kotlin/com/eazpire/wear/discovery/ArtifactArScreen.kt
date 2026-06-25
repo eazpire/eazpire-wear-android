@@ -684,7 +684,8 @@ private fun ArtifactWorldArScene(
         canvasBitmap = decodePngBytes(pngBytes)
         canvasWorkflow = CanvasWorkflow.Placing
         canvasPhase = ArCanvasPhase.Place
-        showPlaneRenderer = true
+        // Plane overlay stays enabled during canvas (also while drawing) — toggling it on here
+        // caused Filament SIGABRT (Transparent Textured precondition).
     }
 
     fun placeCanvasAtScreenPoint(screenX: Float, screenY: Float) {
@@ -927,8 +928,8 @@ private fun ArtifactWorldArScene(
                 environment = environment,
                 mainLightNode = mainLightNode,
                 planeRenderer = when {
-                    isCanvasPlacing && !isCanvasPlaced -> true
-                    isCanvasMode && canvasWorkflow == CanvasWorkflow.Drawing -> false
+                    // Keep planes on for the whole canvas session until placed — never flip off→on mid-session.
+                    isCanvasMode && !isCanvasPlaced -> true
                     isCanvasMode -> showPlaneRenderer
                     else -> showPlaneRenderer
                 },
@@ -1110,7 +1111,9 @@ private fun ArtifactWorldArScene(
             ArtifactArPlacementHandOverlay(
                 canPlace = arSessionResumed && !isClosing,
                 onPlaceTap = { x, y -> placeCanvasAtScreenPoint(x, y) },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(5f),
             )
         }
 
@@ -1198,10 +1201,6 @@ private fun ArtifactWorldArScene(
                     .background(EazWearColors.HubPanel.copy(alpha = 0.9f))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
-        }
-
-        if (isArtifactPlaced && placedGlbInstance == null && artworkBitmap != null) {
-            ArtifactArPlacedBitmapOverlay(bitmap = artworkBitmap!!)
         }
 
         if (isArtifactPlaced) {
@@ -1480,7 +1479,7 @@ private fun ArtifactWorldArScene(
                 TextButton(onClick = { requestClose() }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
                 }
-            } else if (!isSavingDrawing) {
+            } else if (isCanvasMode && !isSavingDrawing) {
                 TextButton(onClick = { requestClose() }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
                 }

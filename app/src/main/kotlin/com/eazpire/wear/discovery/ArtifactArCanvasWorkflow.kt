@@ -25,7 +25,14 @@ internal data class ResolvedArDrawing(
 )
 
 internal fun decodePngBytes(bytes: ByteArray): Bitmap? =
-    runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
+    runCatching {
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { decoded ->
+            if (decoded.config == Bitmap.Config.ARGB_8888 && !decoded.isRecycled) decoded
+            else decoded.copy(Bitmap.Config.ARGB_8888, false).also {
+                if (decoded !== it) decoded.recycle()
+            }
+        }
+    }.getOrNull()
 
 internal fun encodeBitmapToPng(bitmap: Bitmap): ByteArray {
     val stream = java.io.ByteArrayOutputStream()

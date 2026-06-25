@@ -73,9 +73,11 @@ fun findArtifactPlacementHitAtScreenPoint(
         .firstOrNull { hit -> hit.isValidPlacementHit() }
 }
 
+/** Max distance for plane/instant hit anchors — avoids snapping to a far-away floor. */
+private const val MAX_SURFACE_ANCHOR_DISTANCE_M = 3.0f
+
 /**
- * Places the loot exactly on the camera look ray through [screenX]/[screenY] at a fixed distance.
- * Does not snap to floor planes (avoids wrong floor / far-away placement).
+ * Places loot on a detected surface when close enough, otherwise on the camera look ray at [distanceM].
  */
 fun createArtifactAnchorAtScreenPoint(
     session: Session,
@@ -86,6 +88,27 @@ fun createArtifactAnchorAtScreenPoint(
     screenHeightPx: Float,
     distanceM: Float = ARTIFACT_AR_PLACEMENT_DISTANCE_M,
 ): Anchor? {
+    val hit = findArtifactPlacementHitAtScreenPoint(frame, screenX, screenY)
+    if (hit != null) {
+        val cam = frame.camera.pose.translation
+        val t = hit.hitPose.translation
+        val dx = t[0] - cam[0]
+        val dy = t[1] - cam[1]
+        val dz = t[2] - cam[2]
+        val dist = sqrt(dx * dx + dy * dy + dz * dz)
+        if (dist <= MAX_SURFACE_ANCHOR_DISTANCE_M) {
+            Log.d(
+                PLACEMENT_LOG_TAG,
+                "surface anchor dist=${dist.format()}m trackable=${hit.trackable.javaClass.simpleName}",
+            )
+            return hit.createAnchor()
+        }
+        Log.d(
+            PLACEMENT_LOG_TAG,
+            "surface hit ignored (too far ${dist.format()}m) — falling back to camera-aim",
+        )
+    }
+
     val pose = createArtifactCameraAimPose(
         frame = frame,
         screenX = screenX,
