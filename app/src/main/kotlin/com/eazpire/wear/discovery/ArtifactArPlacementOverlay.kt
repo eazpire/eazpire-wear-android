@@ -40,7 +40,7 @@ import com.eazpire.wear.theme.EazWearColors
  */
 @Composable
 fun ArtifactArPlacementHandOverlay(
-    hasValidSurface: Boolean,
+    canPlace: Boolean,
     onPlaceTap: (screenX: Float, screenY: Float) -> Unit,
     modifier: Modifier = Modifier,
     handOffsetY: androidx.compose.ui.unit.Dp = 20.dp,
@@ -49,7 +49,7 @@ fun ArtifactArPlacementHandOverlay(
     val infiniteTransition = rememberInfiniteTransition(label = "ar-hand-pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = if (hasValidSurface) 1.18f else 1f,
+        targetValue = if (canPlace) 1.18f else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 700),
             repeatMode = RepeatMode.Reverse,
@@ -57,8 +57,8 @@ fun ArtifactArPlacementHandOverlay(
         label = "ar-hand-scale",
     )
 
-    val iconAlpha = if (hasValidSurface) 1f else 0.45f
-    val iconTint = if (hasValidSurface) EazWearColors.HubOrange else Color.White.copy(alpha = 0.7f)
+    val iconAlpha = if (canPlace) 1f else 0.45f
+    val iconTint = if (canPlace) EazWearColors.HubOrange else Color.White.copy(alpha = 0.7f)
 
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -69,9 +69,9 @@ fun ArtifactArPlacementHandOverlay(
     Box(
         modifier = modifier
             .zIndex(2f)
-            .pointerInput(hasValidSurface) {
+            .pointerInput(canPlace) {
                 detectTapGestures { offset ->
-                    if (hasValidSurface) {
+                    if (canPlace) {
                         onPlaceTap(offset.x, offset.y)
                     }
                 }
@@ -85,7 +85,7 @@ fun ArtifactArPlacementHandOverlay(
                 .clickable(
                     interactionSource = handInteraction,
                     indication = null,
-                    enabled = hasValidSurface,
+                    enabled = canPlace,
                     onClick = { onPlaceTap(aimScreenX, aimScreenY) },
                 ),
             contentAlignment = Alignment.Center,

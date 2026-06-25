@@ -1,11 +1,33 @@
 package com.eazpire.wear.discovery
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import com.eazpire.wear.R
 import com.eazpire.wear.core.model.MapArtifactDefaults
 import com.google.ar.core.Frame
 import io.github.sceneview.math.Position
@@ -182,4 +204,59 @@ private fun movementToVisuals(relativeBearing: Float): Pair<Boolean, Float> {
     val lean = (relativeBearing / 90f * MAX_LEAN_DEG).coerceIn(-MAX_LEAN_DEG, MAX_LEAN_DEG)
     val faceLeft = relativeBearing < -25f || relativeBearing > 155f
     return faceLeft to lean
+}
+
+/**
+ * Floating Eazy companion in the top-right — pure Compose overlay (no Filament / no extra GLB load).
+ */
+@Composable
+fun ArtifactArEazyMascotComposeOverlay(
+    cameraMovement: EazyMascotMovementState,
+    gpsMovement: EazyMascotMovementState?,
+    modifier: Modifier = Modifier,
+) {
+    val movement = resolveEazyMascotMovement(cameraMovement, gpsMovement)
+    val infiniteTransition = rememberInfiniteTransition(label = "eazy-mascot-bob")
+    val bobOffset by infiniteTransition.animateFloat(
+        initialValue = -6f,
+        targetValue = 6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1250),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "eazy-mascot-bob-offset",
+    )
+    val leanAnim = remember { Animatable(0f) }
+    val scaleXAnim = remember { Animatable(1f) }
+
+    LaunchedEffect(movement.isMoving, movement.relativeBearingDegrees) {
+        val (faceLeft, lean) = if (movement.isMoving) {
+            movementToVisuals(movement.relativeBearingDegrees)
+        } else {
+            false to 0f
+        }
+        leanAnim.animateTo(lean, spring())
+        scaleXAnim.animateTo(if (faceLeft) -1f else 1f, spring())
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .zIndex(12f),
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_eazy_mascot),
+            contentDescription = null,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 8.dp, end = 12.dp)
+                .offset(y = bobOffset.dp)
+                .size(56.dp)
+                .graphicsLayer {
+                    rotationZ = leanAnim.value
+                    scaleX = scaleXAnim.value
+                },
+        )
+    }
 }

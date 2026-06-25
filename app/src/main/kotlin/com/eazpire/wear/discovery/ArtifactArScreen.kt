@@ -37,7 +37,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,13 +76,13 @@ import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
 import com.google.ar.core.Session
+import com.google.ar.core.TrackingState
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.rememberAREnvironment
 import io.github.sceneview.createEnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
-import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.rememberEngine
@@ -171,9 +170,11 @@ private const val ARTIFACT_AR_ROTATION_SENSITIVITY = 0.72f
 private const val ARTIFACT_AR_PLACED_MODEL_SCALE_UNITS = 0.3f
 private const val ARTIFACT_AR_PLACED_BITMAP_SIZE_M = 0.6f
 private const val ARTIFACT_AR_PLACED_LIFT_M = 0.02f
-private const val ARTIFACT_AR_PLANE_DISABLE_FRAME_WAIT = 8
-private const val ARTIFACT_AR_CLOSE_FRAME_WAIT_BEFORE_DESTROY = 14
-private const val ARTIFACT_AR_CLOSE_FRAME_WAIT_AFTER_DESTROY = 10
+private const val ARTIFACT_AR_PLANE_DISABLE_FRAME_WAIT = 12
+private const val ARTIFACT_AR_CLOSE_FRAME_WAIT_BEFORE_DETACH = 12
+private const val ARTIFACT_AR_CLOSE_FRAME_WAIT_AFTER_DETACH = 24
+private const val ARTIFACT_AR_CLOSE_FRAME_WAIT_BEFORE_DESTROY = 10
+private const val ARTIFACT_AR_CLOSE_FRAME_WAIT_AFTER_DESTROY = 24
 private const val ARTIFACT_AR_LOG_TAG = "ArtifactAr"
 /** Bottom chrome (light + close) stays outside the rotation touch overlay. */
 private val ARTIFACT_AR_ROTATION_OVERLAY_BOTTOM_INSET = 108.dp
@@ -223,8 +224,16 @@ private fun resolveArModelAssetPath(modelUrl: String?): String {
     return MapArtifactDefaults.DEMO_GLB_ASSET
 }
 
+/** Bundled GLB paths tried in order when the primary asset fails to parse in AR. */
+private val ARTIFACT_AR_GLB_FALLBACK_PATHS = listOf(
+    MapArtifactDefaults.DEMO_GLB_ASSET,
+)
+
 private fun resolveAutoAnimate(modelUrl: String?): Boolean =
     MapArtifactDefaults.isAnimatedGlb(resolveArModelAssetPath(modelUrl))
+
+private fun resolveArGlbLoadPaths(primaryPath: String): List<String> =
+    (listOf(primaryPath) + ARTIFACT_AR_GLB_FALLBACK_PATHS).distinct()
 
 @Composable
 fun ArtifactArScreen(
@@ -365,14 +374,11 @@ private fun ArtifactWorldArScene(
     var arSessionFailed by remember { mutableStateOf(false) }
     var isClosing by remember { mutableStateOf(false) }
     var keepArSceneMounted by remember { mutableStateOf(true) }
+    var arSessionResumed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        // Let ARScene mount its SurfaceView first, then resume ARCore on our deferred lifecycle.
-        withFrameNanos { }
-        withFrameNanos { }
-        if (!isClosing) {
-            arLifecycleOwner.resumeAr()
-        }
+        // ARScene must mount its SurfaceView first; ARCore resumes only after content is loaded.
+        repeat(2) { withFrameNanos { } }
     }
 
     DisposableEffect(arLifecycleOwner) {
@@ -425,9 +431,12 @@ private fun ArtifactWorldArScene(
     var stagedPlacementAnchor by remember { mutableStateOf<Anchor?>(null) }
     var lastPlaneHit by remember { mutableStateOf<HitResult?>(null) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    var arSession by remember { mutableStateOf<Session?>(null) }
     var hasValidSurface by remember { mutableStateOf(false) }
+    var cameraTracking by remember { mutableStateOf(false) }
     var artworkBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var placedGlbInstance by remember { mutableStateOf<ModelInstance?>(null) }
+    var placedGlbAssetPath by remember { mutableStateOf<String?>(null) }
     var glbLoadFailed by remember { mutableStateOf(false) }
     var placementMode by remember { mutableStateOf(ArtifactArPlacementMode.Default) }
     var modelRotationY by remember { mutableFloatStateOf(0f) }
@@ -440,13 +449,6 @@ private fun ArtifactWorldArScene(
 
     val cameraMovementTracker = remember { ArtifactArCameraMovementTracker() }
     val gpsMascotMovement = rememberEazyMascotGpsMovement(userLocation)
-    val gpsMascotMovementRef = remember { AtomicReference<EazyMascotMovementState?>(null) }
-    var mascotGlbInstance by remember { mutableStateOf<ModelInstance?>(null) }
-    var mascotBobPhase by remember { mutableFloatStateOf(0f) }
-    var mascotLastBobNanos by remember { mutableLongStateOf(0L) }
-    var mascotTransform by remember { mutableStateOf(EazyMascot3DTransform()) }
-    val mascotGlbImportRotation = remember { artifactGlbImportRotation(EAZY_MASCOT_GLB_ASSET) }
-    val mascotAutoAnimate = remember { MapArtifactDefaults.isAnimatedGlb(EAZY_MASCOT_GLB_ASSET) }
 
     val rotationTouchState = remember { ArtifactArRotationTouchState() }
     /** Imperative target — rotate a plain [SceneNode] wrapper; [ModelNode] scaleToUnits ignores Y spin. */
@@ -473,7 +475,7 @@ private fun ArtifactWorldArScene(
         }
     }
 
-    SideEffect {
+    LaunchedEffect(placementAnchor) {
         if (placementAnchor != null) {
             applyPlacedModelRotationY(modelRotationY)
         } else {
@@ -488,78 +490,99 @@ private fun ArtifactWorldArScene(
             if (virtualLightOn) 42_000f else 30_000f
     }
 
-    SideEffect {
-        gpsMascotMovementRef.set(gpsMascotMovement)
-    }
-
-    LaunchedEffect(modelLoader, isClosing) {
-        mascotGlbInstance = null
-        if (isClosing) return@LaunchedEffect
-        Log.d(ARTIFACT_AR_LOG_TAG, "mascot glb load scheduled")
-        delay(900)
-        repeat(4) { withFrameNanos { } }
-        if (isClosing) return@LaunchedEffect
-        val buffer = withContext(Dispatchers.IO) {
-            runCatching { context.assets.readBuffer(EAZY_MASCOT_GLB_ASSET) }.getOrNull()
-        }
-        if (buffer == null) {
-            Log.e(ARTIFACT_AR_LOG_TAG, "mascot glb asset read failed")
-            return@LaunchedEffect
-        }
-        Log.d(ARTIFACT_AR_LOG_TAG, "mascot glb buffer bytes=${buffer.remaining()}")
-        mascotGlbInstance = runCatching { modelLoader.createModelInstance(buffer) }
-            .onFailure { error ->
-                Log.e(ARTIFACT_AR_LOG_TAG, "mascot glb parse failed", error)
-            }
-            .getOrNull()
-        Log.d(ARTIFACT_AR_LOG_TAG, "mascot glb load done success=${mascotGlbInstance != null}")
-    }
-
     val modelAssetPath = remember(artifact.modelUrl) { resolveArModelAssetPath(artifact.modelUrl) }
-    val autoAnimate = remember(artifact.modelUrl) { resolveAutoAnimate(artifact.modelUrl) }
-    val glbImportRotation = remember(modelAssetPath) { artifactGlbImportRotation(modelAssetPath) }
+    val autoAnimate = remember(placedGlbAssetPath, artifact.modelUrl) {
+        resolveAutoAnimate(placedGlbAssetPath ?: artifact.modelUrl)
+    }
+    val glbImportRotation = remember(placedGlbAssetPath, modelAssetPath) {
+        artifactGlbImportRotation(placedGlbAssetPath ?: modelAssetPath)
+    }
     val isDisplayContentReady = placedGlbInstance != null || artworkBitmap != null
     val isArtifactPlaced = placementAnchor != null
+    val canPlace = cameraTracking && isDisplayContentReady && !isClosing && !isArtifactPlaced && arSessionResumed
 
-    LaunchedEffect(modelLoader, modelAssetPath) {
+    LaunchedEffect(modelLoader, modelAssetPath, artifact.imageUrl) {
         placedGlbInstance = null
+        placedGlbAssetPath = null
         glbLoadFailed = false
-        Log.d(ARTIFACT_AR_LOG_TAG, "glb load start path=$modelAssetPath")
-        // Let the AR surface / EGL settle before allocating a large glTF (logcat: EGL_BAD_ALLOC).
-        repeat(4) { withFrameNanos { } }
+        arSessionResumed = false
+        Log.d(ARTIFACT_AR_LOG_TAG, "content prep start primary=$modelAssetPath")
 
-        suspend fun loadGlb(): ModelInstance? {
+        suspend fun loadBitmap() {
+            val imageUrls = listOfNotNull(
+                artifact.imageUrl.takeIf { it.isNotBlank() },
+                MapArtifactDefaults.demoFallback().imageUrl,
+            ).distinct()
+            for (url in imageUrls) {
+                val result = context.imageLoader.execute(
+                    ImageRequest.Builder(context)
+                        .data(url)
+                        .allowHardware(false)
+                        .build(),
+                )
+                val bitmap = (result as? SuccessResult)?.drawable?.toBitmap()
+                if (bitmap != null) {
+                    artworkBitmap = bitmap
+                    Log.d(
+                        ARTIFACT_AR_LOG_TAG,
+                        "artwork bitmap loaded ${bitmap.width}x${bitmap.height} from $url",
+                    )
+                    return
+                }
+                Log.w(ARTIFACT_AR_LOG_TAG, "artwork bitmap load failed url=$url")
+            }
+        }
+
+        suspend fun loadGlbFromPath(path: String): ModelInstance? {
             val buffer = withContext(Dispatchers.IO) {
-                runCatching { context.assets.readBuffer(modelAssetPath) }.getOrNull()
+                runCatching { context.assets.readBuffer(path) }.getOrNull()
             }
             if (buffer == null) {
-                Log.e(ARTIFACT_AR_LOG_TAG, "glb asset read failed path=$modelAssetPath")
+                Log.e(ARTIFACT_AR_LOG_TAG, "glb asset read failed path=$path")
                 return null
             }
-            Log.d(ARTIFACT_AR_LOG_TAG, "glb buffer bytes=${buffer.remaining()} path=$modelAssetPath")
+            Log.d(ARTIFACT_AR_LOG_TAG, "glb buffer bytes=${buffer.remaining()} path=$path")
             return runCatching { modelLoader.createModelInstance(buffer) }
                 .onFailure { error ->
-                    Log.e(ARTIFACT_AR_LOG_TAG, "glb parse failed path=$modelAssetPath", error)
+                    Log.e(ARTIFACT_AR_LOG_TAG, "glb parse failed path=$path", error)
                 }
                 .getOrNull()
         }
 
-        var instance = loadGlb()
-        if (instance == null) {
-            Log.w(ARTIFACT_AR_LOG_TAG, "glb first attempt failed — retry after delay")
-            delay(600)
-            repeat(4) { withFrameNanos { } }
-            instance = loadGlb()
+        loadBitmap()
+
+        val loadPaths = resolveArGlbLoadPaths(modelAssetPath)
+        var instance: ModelInstance? = null
+        var loadedPath: String? = null
+        for (path in loadPaths) {
+            instance = loadGlbFromPath(path)
+            if (instance != null) {
+                loadedPath = path
+                break
+            }
+            delay(400)
+            repeat(2) { withFrameNanos { } }
         }
         placedGlbInstance = instance
+        placedGlbAssetPath = loadedPath
         glbLoadFailed = instance == null
         if (glbLoadFailed) {
-            Log.w(ARTIFACT_AR_LOG_TAG, "glb unavailable — will use artwork bitmap fallback when ready")
+            Log.w(ARTIFACT_AR_LOG_TAG, "all glb paths failed — bitmap fallback when ready")
+        } else {
+            Log.d(ARTIFACT_AR_LOG_TAG, "glb loaded path=$loadedPath")
         }
-        Log.d(
-            ARTIFACT_AR_LOG_TAG,
-            "glb load done success=${instance != null} path=$modelAssetPath",
-        )
+
+        if (isClosing) return@LaunchedEffect
+        if (placedGlbInstance == null && artworkBitmap == null) {
+            Log.e(ARTIFACT_AR_LOG_TAG, "no glb or bitmap — AR session will not start")
+            return@LaunchedEffect
+        }
+        repeat(4) { withFrameNanos { } }
+        if (!isClosing && !arSessionResumed) {
+            Log.d(ARTIFACT_AR_LOG_TAG, "content ready — resuming AR session")
+            arLifecycleOwner.resumeAr()
+            arSessionResumed = true
+        }
     }
 
     fun cancelStagedPlacement() {
@@ -585,12 +608,25 @@ private fun ArtifactWorldArScene(
             return
         }
         val frame = latestFrame ?: return
-        val hit = findArtifactPlaneHitAtScreenPoint(frame, screenX, screenY)
-            ?.takeIf { it.isValidPlaneHit() }
-            ?: lastPlaneHit?.takeIf { it.isValidPlaneHit() }
-            ?: return
-        Log.d(ARTIFACT_AR_LOG_TAG, "place tap — staging anchor (no preview model in scene)")
-        stagedPlacementAnchor = hit.createAnchor()
+        val session = arSession ?: return
+        if (frame.camera.trackingState != TrackingState.TRACKING) {
+            Log.w(ARTIFACT_AR_LOG_TAG, "place tap ignored — camera not tracking")
+            return
+        }
+        val anchor = createArtifactAnchorAtScreenPoint(
+            session = session,
+            frame = frame,
+            screenX = screenX,
+            screenY = screenY,
+            screenWidthPx = screenWidthPx,
+            screenHeightPx = screenHeightPx,
+        )
+        if (anchor == null) {
+            Log.w(ARTIFACT_AR_LOG_TAG, "place tap ignored — could not create anchor")
+            return
+        }
+        Log.d(ARTIFACT_AR_LOG_TAG, "place tap — camera-aim anchor staged")
+        stagedPlacementAnchor = anchor
     }
 
     LaunchedEffect(stagedPlacementAnchor) {
@@ -629,20 +665,29 @@ private fun ArtifactWorldArScene(
 
     LaunchedEffect(isClosing) {
         if (!isClosing) return@LaunchedEffect
-        Log.d(ARTIFACT_AR_LOG_TAG, "close: clearing anchors, plane renderer stays off")
-        cancelStagedPlacement()
-        placementAnchor = null
-        stagedPlacementAnchor = null
-        placedModelNodeRef.set(null)
-        mascotGlbInstance = null
+        Log.d(ARTIFACT_AR_LOG_TAG, "close: phase 1 — hide plane overlay")
         showPlaneRenderer = false
-        repeat(ARTIFACT_AR_CLOSE_FRAME_WAIT_BEFORE_DESTROY) { withFrameNanos { } }
-        Log.d(ARTIFACT_AR_LOG_TAG, "close: destroying deferred AR lifecycle")
-        arLifecycleOwner.destroy()
-        repeat(6) { withFrameNanos { } }
-        Log.d(ARTIFACT_AR_LOG_TAG, "close: unmounting AR scene")
+        repeat(10) { withFrameNanos { } }
+
+        val anchorToRelease = placementAnchor
+        val stagedToRelease = stagedPlacementAnchor
+        stagedPlacementAnchor = null
+
+        Log.d(ARTIFACT_AR_LOG_TAG, "close: phase 2 — unmount AR scene (let Compose dispose nodes)")
         keepArSceneMounted = false
-        repeat(ARTIFACT_AR_CLOSE_FRAME_WAIT_AFTER_DESTROY) { withFrameNanos { } }
+        repeat(40) { withFrameNanos { } }
+
+        Log.d(ARTIFACT_AR_LOG_TAG, "close: phase 3 — destroy AR lifecycle")
+        arLifecycleOwner.destroy()
+        repeat(24) { withFrameNanos { } }
+
+        Log.d(ARTIFACT_AR_LOG_TAG, "close: phase 4 — release ARCore anchors")
+        anchorToRelease?.detach()
+        stagedToRelease?.detach()
+        placementAnchor = null
+        placedModelNodeRef.set(null)
+        repeat(12) { withFrameNanos { } }
+
         Log.d(ARTIFACT_AR_LOG_TAG, "close: navigating back")
         onClose()
     }
@@ -654,31 +699,6 @@ private fun ArtifactWorldArScene(
                 placementAnchor?.detach()
                 placementAnchor = null
             }
-        }
-    }
-
-    LaunchedEffect(artifact.imageUrl) {
-        val imageUrls = listOfNotNull(
-            artifact.imageUrl.takeIf { it.isNotBlank() },
-            MapArtifactDefaults.demoFallback().imageUrl,
-        ).distinct()
-        for (url in imageUrls) {
-            val result = context.imageLoader.execute(
-                ImageRequest.Builder(context)
-                    .data(url)
-                    .allowHardware(false)
-                    .build(),
-            )
-            val bitmap = (result as? SuccessResult)?.drawable?.toBitmap()
-            if (bitmap != null) {
-                artworkBitmap = bitmap
-                Log.d(
-                    ARTIFACT_AR_LOG_TAG,
-                    "artwork bitmap loaded ${bitmap.width}x${bitmap.height} from $url",
-                )
-                break
-            }
-            Log.w(ARTIFACT_AR_LOG_TAG, "artwork bitmap load failed url=$url")
         }
     }
 
@@ -696,6 +716,7 @@ private fun ArtifactWorldArScene(
                 lifecycle = arLifecycleOwner.lifecycle,
                 sessionConfiguration = { _, config ->
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+                    config.instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
                 },
                 onTouchEvent = { event, _ ->
                     // Backup path: same atomic state as the overlay (ARScene touchDispatcher is stale).
@@ -711,55 +732,29 @@ private fun ArtifactWorldArScene(
                 onSessionFailed = {
                     if (!isClosing) arSessionFailed = true
                 },
-                onSessionUpdated = { _: Session, frame: Frame ->
+                onSessionUpdated = { session: Session, frame: Frame ->
                     if (isClosing) return@ARScene
+                    arSession = session
                     latestFrame = frame
+                    cameraTracking = frame.camera.trackingState == TrackingState.TRACKING
                     cameraMovementTracker.updateFromFrame(frame)
-                    val mascotGlb = mascotGlbInstance
-                    if (mascotGlb != null) {
-                        mascotBobPhase += computeEazyMascotBobPhaseDelta(
-                            frame.timestamp,
-                            mascotLastBobNanos,
-                        )
-                        mascotLastBobNanos = frame.timestamp
-                        val movement = resolveEazyMascotMovement(
-                            cameraMovementTracker.state,
-                            gpsMascotMovementRef.get(),
-                        )
-                        mascotTransform = computeEazyMascot3DTransform(
-                            frame,
-                            movement,
-                            mascotBobPhase,
-                        )
-                    }
-                    val planeHit = findArtifactPlaneHit(
+                    val planeHit = findArtifactPlacementHit(
                         frame = frame,
                         screenWidthPx = screenWidthPx,
                         screenHeightPx = screenHeightPx,
                     )
-                    // UI-only: hand icon turns orange. No AnchorNode/ModelNode while planeRenderer is active.
                     hasValidSurface = planeHit != null
                     lastPlaneHit = planeHit
                 },
             ) {
-                val mascotGlb = mascotGlbInstance
-                if (!isClosing && mascotGlb != null) {
-                    Node(
-                        position = mascotTransform.position,
-                        rotation = mascotTransform.rotation,
-                        scale = Scale(x = mascotTransform.scaleX),
-                    ) {
-                        ModelNode(
-                            modelInstance = mascotGlb,
-                            autoAnimate = mascotAutoAnimate,
-                            scaleToUnits = EAZY_MASCOT_SCALE_UNITS,
-                            rotation = mascotGlbImportRotation,
-                        )
-                    }
-                }
-
                 placementAnchor?.let { worldAnchor ->
-                    AnchorNode(anchor = worldAnchor) {
+                    AnchorNode(
+                        anchor = worldAnchor,
+                        visibleTrackingStates = setOf(
+                            TrackingState.TRACKING,
+                            TrackingState.PAUSED,
+                        ),
+                    ) {
                         Node(
                             rotation = Rotation(y = modelRotationY),
                             apply = {
@@ -785,8 +780,8 @@ private fun ArtifactWorldArScene(
                                             x = ARTIFACT_AR_PLACED_BITMAP_SIZE_M,
                                             y = ARTIFACT_AR_PLACED_BITMAP_SIZE_M,
                                         ),
-                                        position = Position(y = ARTIFACT_AR_PLACEMENT_HEIGHT_M),
-                                        rotation = Rotation(x = -90f),
+                                        position = Position(z = 0.01f),
+                                        rotation = Rotation(y = 180f),
                                     )
                                 }
                                 else -> {
@@ -820,6 +815,13 @@ private fun ArtifactWorldArScene(
                     }
                 }
             }
+        }
+
+        if (!isClosing) {
+            ArtifactArEazyMascotComposeOverlay(
+                cameraMovement = cameraMovementTracker.state,
+                gpsMovement = gpsMascotMovement,
+            )
         }
 
         if (isArtifactPlaced) {
@@ -883,7 +885,7 @@ private fun ArtifactWorldArScene(
             }
         }
 
-        if (!isArtifactPlaced && !isPlacementTransition && !isDisplayContentReady) {
+        if (!isArtifactPlaced && !isPlacementTransition && !arSessionResumed) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -951,15 +953,10 @@ private fun ArtifactWorldArScene(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
-                if (!hasValidSurface) {
+                if (!cameraTracking) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = when (placementMode) {
-                            ArtifactArPlacementMode.SpecialManual ->
-                                stringResource(R.string.artifact_ar_special_no_surface)
-                            ArtifactArPlacementMode.Default ->
-                                stringResource(R.string.artifact_ar_tracking_hint)
-                        },
+                        text = stringResource(R.string.artifact_ar_tracking_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = EazWearColors.HubText,
                         textAlign = TextAlign.Center,
@@ -986,7 +983,7 @@ private fun ArtifactWorldArScene(
             }
 
             ArtifactArPlacementHandOverlay(
-                hasValidSurface = hasValidSurface && isDisplayContentReady,
+                canPlace = canPlace,
                 onPlaceTap = { tapX, tapY ->
                     placeArtifactAtScreenPoint(tapX, tapY)
                 },

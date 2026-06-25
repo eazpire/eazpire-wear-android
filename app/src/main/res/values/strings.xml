@@ -90,7 +90,7 @@
     <string name="artifact_ar_direction_unavailable">Calibrating compass… move phone in a figure-eight</string>
     <string name="artifact_ar_direction_cd">Direction to artifact</string>
     <string name="artifact_ar_hand_cd">Tap to place the artifact where you are pointing</string>
-    <string name="artifact_ar_place_hint">Point at a surface, then tap the hand to place the artifact</string>
+    <string name="artifact_ar_place_hint">Tap the hand — the loot appears exactly where you are looking (~1.75 m ahead)</string>
     <string name="artifact_ar_reposition_hint">Point at a new spot and tap the hand to move the artifact</string>
     <string name="artifact_ar_special_enter">Can\'t reach it? Place here</string>
     <string name="artifact_ar_special_enter_hint">For when the spot is inaccessible or you can\'t find the item.</string>
