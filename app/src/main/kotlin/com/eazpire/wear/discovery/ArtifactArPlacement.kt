@@ -190,3 +190,36 @@ fun HitResult.isValidPlacementHit(): Boolean {
     }
     return false
 }
+
+/** Projects a world point to screen pixels; returns null when behind the camera. */
+fun projectWorldToScreen(
+    frame: Frame,
+    worldX: Float,
+    worldY: Float,
+    worldZ: Float,
+    screenWidthPx: Float,
+    screenHeightPx: Float,
+): Pair<Float, Float>? {
+    val camera = frame.camera
+    if (camera.trackingState != TrackingState.TRACKING) return null
+    if (screenWidthPx <= 0f || screenHeightPx <= 0f) return null
+
+    val viewMatrix = FloatArray(16)
+    val projMatrix = FloatArray(16)
+    camera.getViewMatrix(viewMatrix, 0)
+    camera.getProjectionMatrix(projMatrix, 0, 0.1f, 100f)
+
+    val world = floatArrayOf(worldX, worldY, worldZ, 1f)
+    val view = FloatArray(4)
+    val clip = FloatArray(4)
+    android.opengl.Matrix.multiplyMV(view, 0, viewMatrix, 0, world, 0)
+    if (view[2] >= 0f) return null
+    android.opengl.Matrix.multiplyMV(clip, 0, projMatrix, 0, view, 0)
+    if (clip[3] == 0f) return null
+    val ndcX = clip[0] / clip[3]
+    val ndcY = clip[1] / clip[3]
+    val screenX = (ndcX + 1f) * 0.5f * screenWidthPx
+    val screenY = (1f - ndcY) * 0.5f * screenHeightPx
+    if (screenX < 0f || screenY < 0f || screenX > screenWidthPx || screenY > screenHeightPx) return null
+    return screenX to screenY
+}

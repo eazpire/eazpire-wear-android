@@ -6,11 +6,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
@@ -29,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -46,6 +45,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -58,101 +58,39 @@ import kotlin.math.max
 
 private data class StrokePath(val points: List<Offset>)
 
+/** Draw-first canvas workflow phases (placement + save handled by [ArtifactArScreen]). */
 enum class ArCanvasPhase {
-    DetectingSurface,
-    AdjustingFrame,
-    Drawing,
-    Saving,
+    Draw,
+    Place,
 }
 
 @Composable
 fun ArtifactArCanvasOverlay(
-    hasValidSurface: Boolean,
-    cameraTracking: Boolean,
+    phase: ArCanvasPhase,
     isSaving: Boolean,
-    onSave: (ByteArray) -> Unit,
+    isPlaced: Boolean,
+    placementScale: Float,
+    onPlacementScaleChange: (Float) -> Unit,
+    onDrawComplete: (ByteArray) -> Unit,
+    onSave: () -> Unit,
+    onCancelPlacement: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var phase by remember { mutableStateOf(ArCanvasPhase.DetectingSurface) }
-    var frameScale by remember { mutableFloatStateOf(1f) }
     val strokes = remember { mutableStateListOf<StrokePath>() }
     var currentStroke by remember { mutableStateOf<MutableList<Offset>?>(null) }
 
-    val transformState = rememberTransformableState { zoomChange, _, _ ->
-        if (phase == ArCanvasPhase.AdjustingFrame) {
-            frameScale = (frameScale * zoomChange).coerceIn(0.5f, 2.5f)
-        }
-    }
-
-    if (!cameraTracking && phase != ArCanvasPhase.Saving) {
-        phase = ArCanvasPhase.DetectingSurface
-    } else if (hasValidSurface && phase == ArCanvasPhase.DetectingSurface) {
-        phase = ArCanvasPhase.AdjustingFrame
-    } else if (!hasValidSurface && phase == ArCanvasPhase.AdjustingFrame) {
-        phase = ArCanvasPhase.DetectingSurface
-    }
-
-    val frameSizeDp = (160f * frameScale).dp
+    val configuration = LocalConfiguration.current
     val density = LocalDensity.current
-    val frameSizePx = with(density) { frameSizeDp.toPx() }
+    val canvasWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val canvasHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
 
     Box(modifier = modifier.fillMaxSize().zIndex(4f)) {
         when (phase) {
-            ArCanvasPhase.DetectingSurface -> {
-                Text(
-                    text = stringResource(R.string.artifact_ar_canvas_detect_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazWearColors.HubText,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 120.dp, start = 16.dp, end = 16.dp)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(EazWearColors.HubPanel.copy(alpha = 0.88f))
-                        .padding(12.dp),
-                )
-            }
-
-            ArCanvasPhase.AdjustingFrame -> {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .transformable(state = transformState)
-                        .pointerInput(Unit) {
-                            detectTapGestures {
-                                phase = ArCanvasPhase.Drawing
-                            }
-                        },
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(frameSizeDp)
-                            .border(3.dp, EazWearColors.HubOrange, RoundedCornerShape(4.dp))
-                            .background(Color.White.copy(alpha = 0.08f)),
-                    )
-                }
-                Text(
-                    text = stringResource(R.string.artifact_ar_canvas_frame_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EazWearColors.HubText,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 140.dp, start = 16.dp, end = 16.dp)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(EazWearColors.HubPanel.copy(alpha = 0.88f))
-                        .padding(12.dp),
-                )
-            }
-
-            ArCanvasPhase.Drawing, ArCanvasPhase.Saving -> {
+            ArCanvasPhase.Draw -> {
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(phase) {
-                            if (phase != ArCanvasPhase.Drawing) return@pointerInput
+                        .pointerInput(Unit) {
                             detectDragGestures(
                                 onDragStart = { offset ->
                                     currentStroke = mutableListOf(offset)
@@ -195,6 +133,20 @@ fun ArtifactArCanvasOverlay(
                     }
                 }
 
+                Text(
+                    text = stringResource(R.string.artifact_ar_canvas_draw_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = EazWearColors.HubText,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 120.dp, start = 16.dp, end = 16.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(EazWearColors.HubPanel.copy(alpha = 0.88f))
+                        .padding(12.dp),
+                )
+
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -207,31 +159,106 @@ fun ArtifactArCanvasOverlay(
                         onClick = {
                             if (strokes.isNotEmpty()) strokes.removeAt(strokes.lastIndex)
                         },
-                        enabled = strokes.isNotEmpty() && phase == ArCanvasPhase.Drawing,
+                        enabled = strokes.isNotEmpty(),
                     ) {
-                        Icon(Icons.Filled.Undo, contentDescription = stringResource(R.string.artifact_ar_canvas_undo), tint = EazWearColors.HubText)
+                        Icon(
+                            Icons.Filled.Undo,
+                            contentDescription = stringResource(R.string.artifact_ar_canvas_undo),
+                            tint = EazWearColors.HubText,
+                        )
                     }
                     Button(
                         onClick = {
                             if (strokes.isEmpty()) return@Button
-                            phase = ArCanvasPhase.Saving
                             val png = exportStrokesToPng(
                                 strokes = strokes,
-                                widthPx = max(frameSizePx.toInt(), 256),
-                                heightPx = max(frameSizePx.toInt(), 256),
+                                widthPx = max(canvasWidthPx.toInt(), 512),
+                                heightPx = max(canvasHeightPx.toInt(), 512),
                             )
-                            onSave(png)
+                            onDrawComplete(png)
                         },
-                        enabled = strokes.isNotEmpty() && phase == ArCanvasPhase.Drawing,
+                        enabled = strokes.isNotEmpty(),
                     ) {
-                        Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Text(stringResource(R.string.artifact_ar_canvas_save), modifier = Modifier.padding(start = 6.dp))
+                        Text(stringResource(R.string.artifact_ar_canvas_place))
+                    }
+                }
+            }
+
+            ArCanvasPhase.Place -> {
+                Text(
+                    text = if (isPlaced) {
+                        stringResource(R.string.artifact_ar_canvas_place_adjust_hint)
+                    } else {
+                        stringResource(R.string.artifact_ar_canvas_place_hint)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = EazWearColors.HubText,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 120.dp, start = 16.dp, end = 16.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(EazWearColors.HubPanel.copy(alpha = 0.88f))
+                        .padding(12.dp),
+                )
+
+                if (isPlaced) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 12.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(EazWearColors.HubPanel.copy(alpha = 0.9f))
+                            .padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = {
+                                onPlacementScaleChange((placementScale * 0.85f).coerceIn(0.3f, 3f))
+                            },
+                        ) {
+                            Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.artifact_ar_canvas_scale_down), tint = EazWearColors.HubText)
+                        }
+                        Text(
+                            text = "${(placementScale * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = EazWearColors.HubOrange,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                        IconButton(
+                            onClick = {
+                                onPlacementScaleChange((placementScale * 1.15f).coerceIn(0.3f, 3f))
+                            },
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.artifact_ar_canvas_scale_up), tint = EazWearColors.HubText)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 72.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = onCancelPlacement) {
+                            Text(stringResource(R.string.artifact_ar_canvas_cancel), color = EazWearColors.HubText)
+                        }
+                        Button(
+                            onClick = onSave,
+                            enabled = !isSaving,
+                        ) {
+                            Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text(stringResource(R.string.artifact_ar_canvas_save), modifier = Modifier.padding(start = 6.dp))
+                        }
                     }
                 }
             }
         }
 
-        if (isSaving || phase == ArCanvasPhase.Saving) {
+        if (isSaving) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()

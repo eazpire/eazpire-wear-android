@@ -10,6 +10,7 @@ import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,12 +19,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -67,6 +70,7 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.eazpire.wear.R
 import com.eazpire.wear.core.api.WearPlayerApi
+import com.eazpire.wear.core.model.ArDrawing
 import com.eazpire.wear.core.model.MapArtifactDefaults
 import com.eazpire.wear.core.model.MapArtifactProduct
 import com.eazpire.wear.theme.EazWearColors
@@ -426,6 +430,18 @@ private fun ArtifactWorldArScene(
     var canvasSaveMessage by remember { mutableStateOf<String?>(null) }
     var hostingAnchor by remember { mutableStateOf<Anchor?>(null) }
     var hostedCloudAnchorId by remember { mutableStateOf<String?>(null) }
+    var canvasWorkflow by remember { mutableStateOf(CanvasWorkflow.None) }
+    var canvasPhase by remember { mutableStateOf(ArCanvasPhase.Draw) }
+    var canvasPngBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var canvasBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var canvasPlacementAnchor by remember { mutableStateOf<Anchor?>(null) }
+    var canvasStagedPlacementAnchor by remember { mutableStateOf<Anchor?>(null) }
+    var canvasPlacementScale by remember { mutableFloatStateOf(1f) }
+    var editingDrawingId by remember { mutableStateOf<String?>(null) }
+    var nearbyDrawings by remember { mutableStateOf<List<ResolvedArDrawing>>(emptyList()) }
+    var selectedSavedDrawing by remember { mutableStateOf<ArDrawing?>(null) }
+    var showDrawingActionDialog by remember { mutableStateOf(false) }
+    var drawingScreenTaps by remember { mutableStateOf<Map<String, Pair<Float, Float>>>(emptyMap()) }
     val canvasFrameWidthM = 0.5f
     /** Keep plane overlay until staged placement finishes — abrupt disable leaves stale
      *  "Transparent Textured" textures bound and Filament aborts on commit. */
@@ -484,6 +500,8 @@ private fun ArtifactWorldArScene(
     val isHandMode = featureMode == ArtifactArFeatureMode.Hand
     val isViewerMode = featureMode == ArtifactArFeatureMode.Viewer
     val isCanvasMode = featureMode == ArtifactArFeatureMode.Canvas
+    val isCanvasPlacing = isCanvasMode && canvasWorkflow == CanvasWorkflow.Placing
+    val isCanvasPlaced = canvasPlacementAnchor != null
     val showHandPlacement = isHandMode && !isArtifactPlaced && !isPlacementTransition
     val canPlace = cameraTracking && isDisplayContentReady && !isClosing && !isArtifactPlaced && arSessionResumed && isHandMode
 
@@ -644,6 +662,136 @@ private fun ArtifactWorldArScene(
         detachPlacementAnchor()
     }
 
+    fun detachCanvasPlacement() {
+        canvasStagedPlacementAnchor?.detach()
+        canvasStagedPlacementAnchor = null
+        canvasPlacementAnchor?.detach()
+        canvasPlacementAnchor = null
+    }
+
+    fun resetCanvasWorkflow() {
+        canvasWorkflow = CanvasWorkflow.None
+        canvasPhase = ArCanvasPhase.Draw
+        canvasPngBytes = null
+        canvasBitmap = null
+        canvasPlacementScale = 1f
+        editingDrawingId = null
+        detachCanvasPlacement()
+    }
+
+    fun onDrawComplete(pngBytes: ByteArray) {
+        canvasPngBytes = pngBytes
+        canvasBitmap = decodePngBytes(pngBytes)
+        canvasWorkflow = CanvasWorkflow.Placing
+        canvasPhase = ArCanvasPhase.Place
+        showPlaneRenderer = true
+    }
+
+    fun placeCanvasAtScreenPoint(screenX: Float, screenY: Float) {
+        if (canvasWorkflow != CanvasWorkflow.Placing) return
+        val frame = latestFrame ?: return
+        val session = arSession ?: return
+        if (frame.camera.trackingState != TrackingState.TRACKING) return
+        detachCanvasPlacement()
+        val anchor = createArtifactAnchorAtScreenPoint(
+            session = session,
+            frame = frame,
+            screenX = screenX,
+            screenY = screenY,
+            screenWidthPx = screenWidthPx,
+            screenHeightPx = screenHeightPx,
+        ) ?: return
+        canvasStagedPlacementAnchor = anchor
+    }
+
+    LaunchedEffect(canvasStagedPlacementAnchor) {
+        val staged = canvasStagedPlacementAnchor ?: return@LaunchedEffect
+        showPlaneRenderer = false
+        repeat(ARTIFACT_AR_PLANE_DISABLE_FRAME_WAIT) { withFrameNanos { } }
+        if (canvasStagedPlacementAnchor !== staged) {
+            staged.detach()
+            return@LaunchedEffect
+        }
+        canvasPlacementAnchor = staged
+        canvasStagedPlacementAnchor = null
+    }
+
+    fun loadNearbyDrawings() {
+        if (api == null || ownerId.isNullOrBlank()) return
+        val loc = userLocation ?: return
+        scope.launch {
+            val delta = 0.01
+            val json = runCatching {
+                api.arDrawingsList(
+                    minLat = loc.lat - delta,
+                    maxLat = loc.lat + delta,
+                    minLng = loc.lng - delta,
+                    maxLng = loc.lng + delta,
+                )
+            }.getOrNull() ?: return@launch
+            if (!json.optBoolean("ok", false)) return@launch
+            val drawings = api.parseArDrawings(json).filter { it.id.isNotBlank() }
+            val loaded = drawings.map { drawing ->
+                var bitmap: Bitmap? = null
+                val url = drawing.imageUrl
+                if (!url.isNullOrBlank()) {
+                    val result = context.imageLoader.execute(
+                        ImageRequest.Builder(context).data(url).allowHardware(false).build(),
+                    )
+                    bitmap = (result as? SuccessResult)?.drawable?.toBitmap()
+                }
+                ResolvedArDrawing(drawing = drawing, anchor = null, bitmap = bitmap)
+            }
+            nearbyDrawings.forEach { it.anchor?.detach(); it.cloudResolveAnchor?.detach() }
+            nearbyDrawings = loaded
+        }
+    }
+
+    LaunchedEffect(api, ownerId, userLocation, arSessionResumed) {
+        if (api != null && !ownerId.isNullOrBlank() && userLocation != null && arSessionResumed) {
+            loadNearbyDrawings()
+        }
+    }
+
+    fun beginEditDrawing(drawing: ArDrawing) {
+        val resolved = nearbyDrawings.firstOrNull { it.drawing.id == drawing.id } ?: return
+        editingDrawingId = drawing.id
+        canvasBitmap = resolved.bitmap
+        canvasPngBytes = null
+        canvasPlacementScale = (drawing.widthM / canvasFrameWidthM).coerceIn(0.3f, 3f)
+        detachCanvasPlacement()
+        resolved.anchor?.let { canvasPlacementAnchor = it }
+        nearbyDrawings = nearbyDrawings.filter { it.drawing.id != drawing.id }
+        featureMode = ArtifactArFeatureMode.Canvas
+        canvasWorkflow = CanvasWorkflow.Placing
+        canvasPhase = ArCanvasPhase.Place
+        showPlaneRenderer = false
+        showDrawingActionDialog = false
+        selectedSavedDrawing = null
+    }
+
+    fun deleteSavedDrawing(drawing: ArDrawing) {
+        if (api == null) return
+        scope.launch {
+            val result = runCatching { api.arDrawingsDelete(drawing.id) }.getOrElse {
+                JSONObject().put("ok", false)
+            }
+            if (result.optBoolean("ok", false)) {
+                canvasSaveMessage = context.getString(R.string.artifact_ar_canvas_delete_success)
+                nearbyDrawings.firstOrNull { it.drawing.id == drawing.id }?.let { resolved ->
+                    resolved.anchor?.detach()
+                    resolved.cloudResolveAnchor?.detach()
+                }
+                nearbyDrawings = nearbyDrawings.filter { it.drawing.id != drawing.id }
+                onDrawingSaved?.invoke()
+            } else {
+                canvasSaveMessage = context.getString(R.string.artifact_ar_canvas_delete_failed)
+            }
+            showDrawingActionDialog = false
+            selectedSavedDrawing = null
+        }
+    }
+
     fun onFeatureModeSelected(mode: ArtifactArFeatureMode) {
         if (mode == featureMode) {
             showModeMenu = false
@@ -653,38 +801,31 @@ private fun ArtifactWorldArScene(
             detachPlacementAnchor()
             showPlaneRenderer = true
         }
+        if (mode == ArtifactArFeatureMode.Canvas) {
+            resetCanvasWorkflow()
+            canvasWorkflow = CanvasWorkflow.Drawing
+            canvasPhase = ArCanvasPhase.Draw
+        } else {
+            resetCanvasWorkflow()
+        }
         featureMode = mode
         showModeMenu = false
     }
 
-    fun saveCanvasDrawing(pngBytes: ByteArray) {
+    fun saveCanvasDrawing() {
         if (isSavingDrawing || api == null) return
+        val pngBytes = canvasPngBytes ?: canvasBitmap?.let { encodeBitmapToPng(it) }
+        val placedAnchor = canvasPlacementAnchor
         val loc = userLocation
         val session = arSession
-        val frame = latestFrame
-        if (loc == null || session == null || frame == null) {
+        if (pngBytes == null || placedAnchor == null || loc == null || session == null) {
             canvasSaveMessage = context.getString(R.string.artifact_ar_canvas_save_failed)
-            isSavingDrawing = false
             return
         }
         isSavingDrawing = true
-        val planeHit = findArtifactPlaneHit(frame, screenWidthPx, screenHeightPx)
-        val anchor = planeHit?.createAnchor()
-            ?: createArtifactAnchorAtScreenPoint(
-                session = session,
-                frame = frame,
-                screenX = screenWidthPx * ARTIFACT_AR_HIT_TEST_X,
-                screenY = screenHeightPx * ARTIFACT_AR_HIT_TEST_Y,
-                screenWidthPx = screenWidthPx,
-                screenHeightPx = screenHeightPx,
-            )
-        if (anchor == null) {
-            canvasSaveMessage = context.getString(R.string.artifact_ar_canvas_save_failed)
-            isSavingDrawing = false
-            return
-        }
-        val poseSnapshot = ArCloudAnchorHelper.poseFromAnchor(anchor)
-        hostingAnchor = ArCloudAnchorHelper.beginHost(session, anchor)
+        val poseSnapshot = ArCloudAnchorHelper.poseFromAnchor(placedAnchor)
+        val widthM = canvasFrameWidthM * canvasPlacementScale
+        hostingAnchor = ArCloudAnchorHelper.beginHost(session, placedAnchor)
         scope.launch {
             var cloudId: String? = null
             repeat(120) {
@@ -697,12 +838,17 @@ private fun ArtifactWorldArScene(
                 delay(100)
             }
             hostedCloudAnchorId = cloudId
+            val editId = editingDrawingId
+            if (!editId.isNullOrBlank()) {
+                runCatching { api.arDrawingsDelete(editId) }
+            }
             val body = JSONObject()
                 .put("image_base64", ArCloudAnchorHelper.bitmapToBase64Png(pngBytes))
                 .put("lat", loc.lat)
                 .put("lng", loc.lng)
-                .put("width_m", canvasFrameWidthM.toDouble())
+                .put("width_m", widthM.toDouble())
                 .put("pose", poseSnapshot.toJson())
+            if (!editId.isNullOrBlank()) body.put("id", editId)
             if (!cloudId.isNullOrBlank()) body.put("cloud_anchor_id", cloudId)
             val result = runCatching { api.arDrawingsSave(body) }.getOrElse {
                 JSONObject().put("ok", false).put("error", it.message)
@@ -710,13 +856,14 @@ private fun ArtifactWorldArScene(
             isSavingDrawing = false
             if (result.optBoolean("ok", false)) {
                 canvasSaveMessage = context.getString(R.string.artifact_ar_canvas_save_success)
+                resetCanvasWorkflow()
+                loadNearbyDrawings()
                 onDrawingSaved?.invoke()
             } else {
                 canvasSaveMessage = result.optString("error", context.getString(R.string.artifact_ar_canvas_save_failed))
             }
             hostingAnchor?.detach()
             hostingAnchor = null
-            anchor.detach()
         }
     }
 
@@ -749,6 +896,8 @@ private fun ArtifactWorldArScene(
         stagedToRelease?.detach()
         placementAnchor = null
         placedModelNodeRef.set(null)
+        nearbyDrawings.forEach { it.anchor?.detach(); it.cloudResolveAnchor?.detach() }
+        detachCanvasPlacement()
         repeat(12) { withFrameNanos { } }
 
         Log.d(ARTIFACT_AR_LOG_TAG, "close: navigating back")
@@ -761,6 +910,8 @@ private fun ArtifactWorldArScene(
                 cancelStagedPlacement()
                 placementAnchor?.detach()
                 placementAnchor = null
+                nearbyDrawings.forEach { it.anchor?.detach(); it.cloudResolveAnchor?.detach() }
+                detachCanvasPlacement()
             }
         }
     }
@@ -775,7 +926,12 @@ private fun ArtifactWorldArScene(
                 materialLoader = materialLoader,
                 environment = environment,
                 mainLightNode = mainLightNode,
-                planeRenderer = if (isCanvasMode) true else showPlaneRenderer,
+                planeRenderer = when {
+                    isCanvasPlacing && !isCanvasPlaced -> true
+                    isCanvasMode && canvasWorkflow == CanvasWorkflow.Drawing -> false
+                    isCanvasMode -> showPlaneRenderer
+                    else -> showPlaneRenderer
+                },
                 lifecycle = arLifecycleOwner.lifecycle,
                 sessionConfiguration = { _, config ->
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
@@ -809,6 +965,26 @@ private fun ArtifactWorldArScene(
                     )
                     hasValidSurface = planeHit != null
                     lastPlaneHit = planeHit
+
+                    val sessionForDrawings = session
+                    if (nearbyDrawings.isNotEmpty()) {
+                        val updated = nearbyDrawings.map { resolved ->
+                            if (resolved.anchor == null) {
+                                resolveDrawingAnchor(sessionForDrawings, resolved)
+                            } else {
+                                resolved
+                            }
+                        }
+                        if (updated != nearbyDrawings) nearbyDrawings = updated
+
+                        val taps = mutableMapOf<String, Pair<Float, Float>>()
+                        nearbyDrawings.forEach { resolved ->
+                            val anchor = resolved.anchor ?: return@forEach
+                            projectDrawingScreenPoint(frame, anchor, screenWidthPx, screenHeightPx)
+                                ?.let { taps[resolved.drawing.id] = it }
+                        }
+                        drawingScreenTaps = taps
+                    }
                 },
             ) {
                 val renderAssetPath = placedGlbAssetPath ?: MapArtifactDefaults.DEMO_GLB_ASSET
@@ -864,6 +1040,40 @@ private fun ArtifactWorldArScene(
                         }
                     }
                 }
+                canvasPlacementAnchor?.let { worldAnchor ->
+                    canvasBitmap?.let { bitmap ->
+                        val widthM = canvasFrameWidthM * canvasPlacementScale
+                        AnchorNode(
+                            anchor = worldAnchor,
+                            visibleTrackingStates = setOf(
+                                TrackingState.TRACKING,
+                                TrackingState.PAUSED,
+                            ),
+                        ) {
+                            ImageNode(
+                                bitmap = bitmap,
+                                size = Size(x = widthM, y = widthM),
+                            )
+                        }
+                    }
+                }
+                nearbyDrawings.forEach { resolved ->
+                    val anchor = resolved.anchor ?: return@forEach
+                    resolved.bitmap?.let { bitmap ->
+                        AnchorNode(
+                            anchor = anchor,
+                            visibleTrackingStates = setOf(
+                                TrackingState.TRACKING,
+                                TrackingState.PAUSED,
+                            ),
+                        ) {
+                            ImageNode(
+                                bitmap = bitmap,
+                                size = Size(x = resolved.drawing.widthM, y = resolved.drawing.widthM),
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -880,27 +1090,114 @@ private fun ArtifactWorldArScene(
 
         if (isCanvasMode && !isClosing) {
             ArtifactArCanvasOverlay(
-                hasValidSurface = hasValidSurface,
-                cameraTracking = cameraTracking,
+                phase = canvasPhase,
                 isSaving = isSavingDrawing,
+                isPlaced = isCanvasPlaced,
+                placementScale = canvasPlacementScale,
+                onPlacementScaleChange = { canvasPlacementScale = it },
+                onDrawComplete = ::onDrawComplete,
                 onSave = ::saveCanvasDrawing,
+                onCancelPlacement = {
+                    resetCanvasWorkflow()
+                    canvasWorkflow = CanvasWorkflow.Drawing
+                    canvasPhase = ArCanvasPhase.Draw
+                },
                 modifier = Modifier.fillMaxSize(),
             )
-            canvasSaveMessage?.let { msg ->
-                Text(
-                    text = msg,
-                    color = EazWearColors.HubOrange,
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 100.dp)
-                        .zIndex(5f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(EazWearColors.HubPanel.copy(alpha = 0.9f))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
+        }
+
+        if (isCanvasPlacing && !isCanvasPlaced && !isClosing && cameraTracking) {
+            ArtifactArPlacementHandOverlay(
+                canPlace = arSessionResumed && !isClosing,
+                onPlaceTap = { x, y -> placeCanvasAtScreenPoint(x, y) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        if (canvasStagedPlacementAnchor != null) {
+            Box(
+                modifier = Modifier.fillMaxSize().zIndex(2f),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(color = EazWearColors.HubOrange, modifier = Modifier.size(40.dp))
             }
+        }
+
+        val showSavedDrawingTaps = !isCanvasMode || canvasWorkflow == CanvasWorkflow.None
+        if (showSavedDrawingTaps && drawingScreenTaps.isNotEmpty() && !isClosing) {
+            drawingScreenTaps.forEach { (drawingId, screenPos) ->
+                val drawing = nearbyDrawings.firstOrNull { it.drawing.id == drawingId }?.drawing ?: return@forEach
+                val xDp = with(density) { screenPos.first.toDp() }
+                val yDp = with(density) { screenPos.second.toDp() }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = xDp - 24.dp, y = yDp - 24.dp)
+                        .size(48.dp)
+                        .zIndex(6f)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(EazWearColors.HubOrange.copy(alpha = 0.85f))
+                        .semantics {
+                            contentDescription = context.getString(R.string.artifact_ar_canvas_tap_marker_cd)
+                        }
+                        .clickable {
+                            selectedSavedDrawing = drawing
+                            showDrawingActionDialog = true
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "✎",
+                        color = EazWearColors.HubText,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+        }
+
+        if (showDrawingActionDialog && selectedSavedDrawing != null) {
+            val drawing = selectedSavedDrawing!!
+            AlertDialog(
+                onDismissRequest = {
+                    showDrawingActionDialog = false
+                    selectedSavedDrawing = null
+                },
+                title = {
+                    Text(
+                        drawing.title ?: stringResource(R.string.artifact_ar_drawing_untitled),
+                    )
+                },
+                text = { Text(stringResource(R.string.artifact_ar_canvas_action_title)) },
+                confirmButton = {
+                    TextButton(onClick = { beginEditDrawing(drawing) }) {
+                        Text(stringResource(R.string.artifact_ar_canvas_action_edit))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deleteSavedDrawing(drawing) }) {
+                        Text(
+                            stringResource(R.string.artifact_ar_canvas_action_delete),
+                            color = EazWearColors.HubOrange,
+                        )
+                    }
+                },
+            )
+        }
+
+        canvasSaveMessage?.let { msg ->
+            Text(
+                text = msg,
+                color = EazWearColors.HubOrange,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 100.dp)
+                    .zIndex(5f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(EazWearColors.HubPanel.copy(alpha = 0.9f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
         }
 
         if (isArtifactPlaced && placedGlbInstance == null && artworkBitmap != null) {
@@ -1179,7 +1476,7 @@ private fun ArtifactWorldArScene(
                         Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
                     }
                 }
-            } else if (!isCanvasMode) {
+            } else if (!isCanvasMode && !isArtifactPlaced) {
                 TextButton(onClick = { requestClose() }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.artifact_ar_close), color = EazWearColors.HubOrange)
                 }
