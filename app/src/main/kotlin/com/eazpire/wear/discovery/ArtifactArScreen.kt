@@ -91,6 +91,7 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.utils.readBuffer
 import io.github.sceneview.node.Node as SceneNode
 import java.util.concurrent.atomic.AtomicBoolean
@@ -167,7 +168,7 @@ private const val ARTIFACT_AR_DEFAULT_MAIN_LIGHT = 120_000f
 private const val ARTIFACT_AR_BOOSTED_MAIN_LIGHT = 380_000f
 private const val ARTIFACT_AR_POINT_LIGHT_INTENSITY = 650_000f
 private const val ARTIFACT_AR_ROTATION_SENSITIVITY = 0.72f
-private const val ARTIFACT_AR_PLACED_MODEL_SCALE_UNITS = 0.3f
+private const val ARTIFACT_AR_PLACED_MODEL_SCALE_UNITS = 0.55f
 private const val ARTIFACT_AR_PLACED_BITMAP_SIZE_M = 0.6f
 private const val ARTIFACT_AR_PLACED_LIFT_M = 0.02f
 private const val ARTIFACT_AR_PLANE_DISABLE_FRAME_WAIT = 12
@@ -460,7 +461,7 @@ private fun ArtifactWorldArScene(
             Log.w(ARTIFACT_AR_LOG_TAG, "applyPlacedModelRotationY: node ref is null (y=$yDegrees)")
             return
         }
-        node.rotation = Rotation(y = yDegrees)
+        node.rotation = artifactArModelRotation(yDegrees)
         Log.d(
             ARTIFACT_AR_LOG_TAG,
             "placed model rotationY=${yDegrees.toInt()} node=${node.rotation.y.toInt()} ref=${node.hashCode()}",
@@ -475,7 +476,7 @@ private fun ArtifactWorldArScene(
         }
     }
 
-    LaunchedEffect(placementAnchor) {
+    LaunchedEffect(placementAnchor, modelRotationY) {
         if (placementAnchor != null) {
             applyPlacedModelRotationY(modelRotationY)
         } else {
@@ -493,9 +494,6 @@ private fun ArtifactWorldArScene(
     val modelAssetPath = remember(artifact.modelUrl) { resolveArModelAssetPath(artifact.modelUrl) }
     val autoAnimate = remember(placedGlbAssetPath, artifact.modelUrl) {
         resolveAutoAnimate(placedGlbAssetPath ?: artifact.modelUrl)
-    }
-    val glbImportRotation = remember(placedGlbAssetPath, modelAssetPath) {
-        artifactGlbImportRotation(placedGlbAssetPath ?: modelAssetPath)
     }
     val isDisplayContentReady = placedGlbInstance != null || artworkBitmap != null
     val isArtifactPlaced = placementAnchor != null
@@ -640,9 +638,10 @@ private fun ArtifactWorldArScene(
         }
         Log.d(
             ARTIFACT_AR_LOG_TAG,
-            "staged anchor ready — mounting placed model glb=${placedGlbInstance != null} bitmap=${artworkBitmap != null}",
+            "staged anchor ready — mounting glb path=$placedGlbAssetPath instance=${placedGlbInstance != null}",
         )
         modelRotationY = 0f
+        virtualLightOn = true
         placementAnchor = staged
         stagedPlacementAnchor = null
     }
@@ -747,7 +746,10 @@ private fun ArtifactWorldArScene(
                     lastPlaneHit = planeHit
                 },
             ) {
+                val renderAssetPath = placedGlbAssetPath ?: MapArtifactDefaults.DEMO_GLB_ASSET
                 placementAnchor?.let { worldAnchor ->
+                    val renderInstance = rememberModelInstance(modelLoader, renderAssetPath)
+                        ?: placedGlbInstance
                     AnchorNode(
                         anchor = worldAnchor,
                         visibleTrackingStates = setOf(
@@ -755,60 +757,43 @@ private fun ArtifactWorldArScene(
                             TrackingState.PAUSED,
                         ),
                     ) {
-                        Node(
-                            rotation = Rotation(y = modelRotationY),
-                            apply = {
-                                placedModelNodeRef.set(this)
-                                rotation = Rotation(y = modelRotationY)
-                            },
-                        ) {
-                            val glb = placedGlbInstance
-                            when {
-                                glb != null -> {
-                                    ModelNode(
-                                        modelInstance = glb,
-                                        autoAnimate = autoAnimate,
-                                        scaleToUnits = ARTIFACT_AR_PLACED_MODEL_SCALE_UNITS,
-                                        rotation = glbImportRotation,
-                                        position = Position(y = ARTIFACT_AR_PLACED_LIFT_M),
-                                    )
-                                }
-                                artworkBitmap != null -> {
-                                    ImageNode(
-                                        bitmap = artworkBitmap!!,
-                                        size = Size(
-                                            x = ARTIFACT_AR_PLACED_BITMAP_SIZE_M,
-                                            y = ARTIFACT_AR_PLACED_BITMAP_SIZE_M,
-                                        ),
-                                        position = Position(z = 0.01f),
-                                        rotation = Rotation(y = 180f),
-                                    )
-                                }
-                                else -> {
-                                    Log.w(
-                                        ARTIFACT_AR_LOG_TAG,
-                                        "placed anchor mounted but no glb/bitmap content",
-                                    )
-                                }
-                            }
+                        if (renderInstance != null) {
+                            ModelNode(
+                                modelInstance = renderInstance,
+                                autoAnimate = autoAnimate,
+                                scaleToUnits = ARTIFACT_AR_PLACED_MODEL_SCALE_UNITS,
+                                rotation = artifactArModelRotation(modelRotationY),
+                                apply = {
+                                    placedModelNodeRef.set(this)
+                                    rotation = artifactArModelRotation(modelRotationY)
+                                },
+                            )
+                        } else if (artworkBitmap != null) {
+                            ImageNode(
+                                bitmap = artworkBitmap!!,
+                                size = Size(
+                                    x = ARTIFACT_AR_PLACED_BITMAP_SIZE_M,
+                                    y = ARTIFACT_AR_PLACED_BITMAP_SIZE_M,
+                                ),
+                            )
                         }
+                        LightNode(
+                            type = LightManager.Type.POINT,
+                            intensity = ARTIFACT_AR_POINT_LIGHT_INTENSITY,
+                            position = Position(y = 0.35f, z = 0.15f),
+                            apply = {
+                                color(1.0f, 0.94f, 0.82f)
+                                falloff(2.0f)
+                            },
+                        )
                         if (virtualLightOn) {
                             LightNode(
                                 type = LightManager.Type.POINT,
-                                intensity = ARTIFACT_AR_POINT_LIGHT_INTENSITY,
-                                position = Position(y = 0.55f, z = 0.25f),
-                                apply = {
-                                    color(1.0f, 0.94f, 0.82f)
-                                    falloff(2.2f)
-                                },
-                            )
-                            LightNode(
-                                type = LightManager.Type.POINT,
-                                intensity = ARTIFACT_AR_POINT_LIGHT_INTENSITY * 0.35f,
-                                position = Position(y = 0.35f, x = -0.45f, z = 0.1f),
+                                intensity = ARTIFACT_AR_POINT_LIGHT_INTENSITY * 0.45f,
+                                position = Position(y = 0.55f, x = 0.35f, z = 0.2f),
                                 apply = {
                                     color(1.0f, 0.97f, 0.9f)
-                                    falloff(1.8f)
+                                    falloff(1.6f)
                                 },
                             )
                         }
@@ -822,6 +807,10 @@ private fun ArtifactWorldArScene(
                 cameraMovement = cameraMovementTracker.state,
                 gpsMovement = gpsMascotMovement,
             )
+        }
+
+        if (isArtifactPlaced && placedGlbInstance == null && artworkBitmap != null) {
+            ArtifactArPlacedBitmapOverlay(bitmap = artworkBitmap!!)
         }
 
         if (isArtifactPlaced) {
