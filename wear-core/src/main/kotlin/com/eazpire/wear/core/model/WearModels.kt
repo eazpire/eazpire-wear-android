@@ -152,10 +152,11 @@ object MapArtifactDefaults {
     )
 }
 
-/** Saved AR canvas drawing (account-bound, optional cloud anchor). */
+/** Saved AR canvas drawing (account-bound, optional cloud / geospatial anchor). */
 data class ArDrawing(
     val id: String,
     val cloudAnchorId: String? = null,
+    val anchorType: String = "local_fallback",
     val poseTx: Float = 0f,
     val poseTy: Float = 0f,
     val poseTz: Float = 0f,
@@ -165,6 +166,14 @@ data class ArDrawing(
     val poseQw: Float = 1f,
     val lat: Double = 0.0,
     val lng: Double = 0.0,
+    val altitude: Double? = null,
+    val headingDegrees: Double? = null,
+    val horizontalAccuracyM: Double? = null,
+    val verticalAccuracyM: Double? = null,
+    val headingAccuracyDeg: Double? = null,
+    val geospatialPoseJson: String? = null,
+    val placementQuality: String? = null,
+    val vpsAvailable: Boolean = false,
     val widthM: Float = 0.5f,
     val imageR2Key: String = "",
     val imageUrl: String? = null,

@@ -417,9 +417,11 @@ class WearPlayerApi(
         return (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             val pose = o.optJSONObject("pose") ?: JSONObject()
+            val geo = o.optJSONObject("geospatial_pose")
             ArDrawing(
                 id = o.optString("id", ""),
                 cloudAnchorId = o.optString("cloud_anchor_id", "").takeIf { it.isNotBlank() },
+                anchorType = o.optString("anchor_type", "local_fallback"),
                 poseTx = pose.optDouble("tx", 0.0).toFloat(),
                 poseTy = pose.optDouble("ty", 0.0).toFloat(),
                 poseTz = pose.optDouble("tz", 0.0).toFloat(),
@@ -429,6 +431,18 @@ class WearPlayerApi(
                 poseQw = pose.optDouble("qw", 1.0).toFloat(),
                 lat = o.optDouble("lat", 0.0),
                 lng = o.optDouble("lng", 0.0),
+                altitude = o.optDouble("altitude").takeIf { o.has("altitude") && !o.isNull("altitude") },
+                headingDegrees = geo?.optDouble("heading")
+                    ?: o.optDouble("heading").takeIf { o.has("heading") },
+                horizontalAccuracyM = o.optDouble("horizontal_accuracy_m")
+                    .takeIf { o.has("horizontal_accuracy_m") },
+                verticalAccuracyM = o.optDouble("vertical_accuracy_m")
+                    .takeIf { o.has("vertical_accuracy_m") },
+                headingAccuracyDeg = o.optDouble("heading_accuracy_deg")
+                    .takeIf { o.has("heading_accuracy_deg") },
+                geospatialPoseJson = o.optString("geospatial_pose_json", "").takeIf { it.isNotBlank() },
+                placementQuality = o.optString("placement_quality", "").takeIf { it.isNotBlank() },
+                vpsAvailable = o.optBoolean("vps_available", false),
                 widthM = o.optDouble("width_m", 0.5).toFloat(),
                 imageR2Key = o.optString("image_r2_key", ""),
                 imageUrl = o.optString("image_url", "").takeIf { it.isNotBlank() },

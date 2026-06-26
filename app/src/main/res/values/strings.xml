@@ -133,6 +133,12 @@
     <string name="artifact_ar_canvas_action_title">Your drawing</string>
     <string name="artifact_ar_canvas_action_edit">Edit position</string>
     <string name="artifact_ar_canvas_action_delete">Delete</string>
+    <string name="ar_scan_quality_poor">Move slowly and scan your surroundings.</string>
+    <string name="ar_scan_quality_medium">Keep scanning — more detail helps placement.</string>
+    <string name="ar_scan_quality_good">Placement quality is good.</string>
+    <string name="ar_scan_quality_excellent">Excellent scan — stable placement possible.</string>
+    <string name="ar_scan_vps_unavailable">Visual positioning unavailable here — accuracy may be limited.</string>
+    <string name="ar_localization_scan_hint">Scan the area to restore this AR content as precisely as possible.</string>
     <string name="artifact_ar_drawing_resolving">Loading your drawing in AR…</string>
     <string name="artifact_ar_drawing_untitled">My AR drawing</string>
     <string name="artifact_ar_drawing_tap_denied">Move closer to view your saved drawing in AR.</string>

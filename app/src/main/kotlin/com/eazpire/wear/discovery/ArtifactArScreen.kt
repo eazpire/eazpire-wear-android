@@ -442,6 +442,8 @@ private fun ArtifactWorldArScene(
     var selectedSavedDrawing by remember { mutableStateOf<ArDrawing?>(null) }
     var showDrawingActionDialog by remember { mutableStateOf(false) }
     var drawingScreenTaps by remember { mutableStateOf<Map<String, Pair<Float, Float>>>(emptyMap()) }
+    var placementQuality by remember { mutableStateOf(ArPlacementQuality.Poor) }
+    var vpsAvailable by remember { mutableStateOf(false) }
     val canvasFrameWidthM = 0.5f
     /** Keep plane overlay until staged placement finishes — abrupt disable leaves stale
      *  "Transparent Textured" textures bound and Filament aborts on commit. */
@@ -826,6 +828,7 @@ private fun ArtifactWorldArScene(
         isSavingDrawing = true
         val poseSnapshot = ArCloudAnchorHelper.poseFromAnchor(placedAnchor)
         val widthM = canvasFrameWidthM * canvasPlacementScale
+        val geoSnapshot = ArGeospatialManager.captureSnapshot(session)
         hostingAnchor = ArCloudAnchorHelper.beginHost(session, placedAnchor)
         scope.launch {
             var cloudId: String? = null
@@ -849,6 +852,16 @@ private fun ArtifactWorldArScene(
                 .put("lng", loc.lng)
                 .put("width_m", widthM.toDouble())
                 .put("pose", poseSnapshot.toJson())
+                .put("anchor_type", ArGeospatialManager.anchorTypeForSave(cloudId, geoSnapshot))
+                .put("placement_quality", placementQualityToApiValue(placementQuality))
+                .put("vps_available", vpsAvailable)
+            geoSnapshot?.let { geo ->
+                body.put("geospatial_pose_json", geo.toJson())
+                body.put("altitude", geo.altitude)
+                body.put("horizontal_accuracy_m", geo.horizontalAccuracyM)
+                body.put("vertical_accuracy_m", geo.verticalAccuracyM)
+                body.put("heading_accuracy_deg", geo.headingAccuracyDeg)
+            }
             if (!editId.isNullOrBlank()) body.put("id", editId)
             if (!cloudId.isNullOrBlank()) body.put("cloud_anchor_id", cloudId)
             val result = runCatching { api.arDrawingsSave(body) }.getOrElse {
@@ -938,6 +951,7 @@ private fun ArtifactWorldArScene(
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                     config.instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
                     ArCloudAnchorHelper.enableInConfig(config)
+                    ArGeospatialManager.enableInConfig(config)
                 },
                 onTouchEvent = { event, _ ->
                     // Backup path: same atomic state as the overlay (ARScene touchDispatcher is stale).
@@ -966,6 +980,14 @@ private fun ArtifactWorldArScene(
                     )
                     hasValidSurface = planeHit != null
                     lastPlaneHit = planeHit
+
+                    val geoSnapshot = ArGeospatialManager.captureSnapshot(session)
+                    vpsAvailable = ArGeospatialManager.isVpsAvailable(session)
+                    placementQuality = ArGeospatialManager.evaluatePlacementQuality(
+                        snapshot = geoSnapshot,
+                        cameraTracking = cameraTracking,
+                        hasDetectedSurface = hasValidSurface,
+                    )
 
                     val sessionForDrawings = session
                     if (nearbyDrawings.isNotEmpty()) {
@@ -1345,6 +1367,12 @@ private fun ArtifactWorldArScene(
                             .clip(RoundedCornerShape(10.dp))
                             .background(EazWearColors.HubButtonCharcoal.copy(alpha = 0.88f))
                             .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                } else if (showHandPlacement || (isCanvasPlacing && !isCanvasPlaced)) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ArScanQualityBanner(
+                        quality = placementQuality,
+                        vpsAvailable = vpsAvailable,
                     )
                 } else if (placementMode == ArtifactArPlacementMode.SpecialManual) {
                     Spacer(modifier = Modifier.height(8.dp))

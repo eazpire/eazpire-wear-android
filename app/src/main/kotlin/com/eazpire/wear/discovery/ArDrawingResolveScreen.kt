@@ -167,6 +167,7 @@ fun ArDrawingResolveScreen(
                 sessionConfiguration = { _, config ->
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                     ArCloudAnchorHelper.enableInConfig(config)
+                    ArGeospatialManager.enableInConfig(config)
                 },
                 onSessionFailed = { if (!isClosing) arSessionFailed = true },
                 onSessionUpdated = { session: Session, frame: Frame ->
