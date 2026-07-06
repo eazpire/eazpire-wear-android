@@ -163,9 +163,9 @@ fun WalletScreen(api: WearPlayerApi, ownerId: String) {
             error = null
             runCatching {
                 val bal = api.balanceSnapshot(ownerId)
-                activityEaz = String.format(Locale.US, "%.2f EAZ", bal.eazBalance.toDouble())
+                activityEaz = String.format(Locale.US, "%.2f EAZC", bal.eazBalance.toDouble())
                 val m = api.moveToEarnStatusModel()
-                eazToday = String.format(Locale.US, "%.0f EAZ", m.eazEarnedToday.toDouble())
+                eazToday = String.format(Locale.US, "%.0f EAZC", m.eazEarnedToday.toDouble())
                 m2eUnlocked = m.wallet != null || m.eazEarnedToday > 0
                 m2eWallet = m.wallet ?: runCatching { api.moveToEarnWalletModel() }.getOrNull()
                 val w = m2eWallet
