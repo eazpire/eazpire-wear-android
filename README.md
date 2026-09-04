@@ -37,7 +37,11 @@ cd wear-android
 
 ## Auth
 
-Shopify Customer Account OAuth PKCE with callback `shop.73952035098.eazpire://callback` (same URI as Creator app; both apps may compete on the same device).
+Shopify Customer Account OAuth PKCE:
+- Creator app callback: `shop.73952035098.eazpire://callback`
+- Wear phone app callback: `shop.73952035098.eazpire.wear://callback` (separate URI — no Android app chooser)
+
+Register both callback URLs on the same Shopify Customer Account API mobile client.
 
 After login, JWT is pushed to the Wear OS companion via Data Layer path `/eaz/wear/auth`.
 

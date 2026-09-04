@@ -147,7 +147,8 @@ fun AuthScreen(
                 savedState = state
                 OAuthPkceStore.save(context, state, verifier)
                 val url = authService.buildAuthorizationUrl(endpoints.authorizationEndpoint, verifier, state)
-                AuthBrowserLauncher.launchOAuth(context, url)
+                val browserUrl = authService.buildBrowserLoginUrl(url, endpoints.endSessionEndpoint)
+                AuthBrowserLauncher.launchOAuth(context, browserUrl)
             } catch (e: Exception) {
                 error = AuthErrorMessages.fromThrowable(e)
             } finally {

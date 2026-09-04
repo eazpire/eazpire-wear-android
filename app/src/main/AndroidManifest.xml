@@ -50,7 +50,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="shop.73952035098.eazpire"
+                    android:scheme="shop.73952035098.eazpire.wear"
                     android:host="callback" />
             </intent-filter>
         </activity>

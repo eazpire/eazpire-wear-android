@@ -23,7 +23,11 @@ class ShopifyAuthService {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    data class AuthEndpoints(val authorizationEndpoint: String, val tokenEndpoint: String)
+    data class AuthEndpoints(
+        val authorizationEndpoint: String,
+        val tokenEndpoint: String,
+        val endSessionEndpoint: String? = null,
+    )
 
     suspend fun discoverEndpoints(): AuthEndpoints = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(AuthConfig.OIDC_DISCOVERY_URL).build()
@@ -33,8 +37,9 @@ class ShopifyAuthService {
         val json = JSONObject(body)
         val auth = AuthConfig.normalizeOAuthEndpoint(json.optString("authorization_endpoint"))
         val token = AuthConfig.normalizeOAuthEndpoint(json.optString("token_endpoint"))
+        val endSession = AuthConfig.normalizeOAuthEndpoint(json.optString("end_session_endpoint"))
         if (auth.isBlank() || token.isBlank()) throw AuthException("Missing OAuth endpoints")
-        AuthEndpoints(auth, token)
+        AuthEndpoints(auth, token, endSession.takeIf { it.isNotBlank() })
     }
 
     fun buildAuthorizationUrl(
@@ -80,6 +85,20 @@ class ShopifyAuthService {
             append("&code_challenge_method=S256")
             append("&prompt=").append(java.net.URLEncoder.encode("login select_account", "UTF-8"))
             append("&max_age=0")
+        }
+    }
+
+    /** Clear Shopify browser session before OAuth so a different account can be chosen. */
+    fun buildBrowserLoginUrl(oauthTargetUrl: String, endSessionEndpoint: String?): String {
+        val logoutBase = endSessionEndpoint?.takeIf { it.isNotBlank() }
+            ?: "https://shopify.com/authentication/${AuthConfig.SHOP_ID}/logout"
+        val encodedTarget = java.net.URLEncoder.encode(oauthTargetUrl, "UTF-8")
+        val sep = if (logoutBase.contains("?")) "&" else "?"
+        return buildString {
+            append(logoutBase)
+            append(sep)
+            append("post_logout_redirect_uri=").append(encodedTarget)
+            append("&return_url=").append(encodedTarget)
         }
     }
 
